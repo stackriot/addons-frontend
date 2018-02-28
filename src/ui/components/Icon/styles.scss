@@ -65,6 +65,10 @@
   width: 10px;
 }
 
+.Icon-anonymous-user {
+  @include icon($name: "anonymous-user");
+}
+
 .Icon-user {
   @include icon($name: "user");
 }
