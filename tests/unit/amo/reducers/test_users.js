@@ -121,20 +121,20 @@ describe(__filename, () => {
   describe('hasPermission selector', () => {
     it('returns `true` when user has the given permission', () => {
       const permissions = [ADMIN_TOOLS_VIEW, STATS_VIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasPermission(state, STATS_VIEW)).toEqual(true);
     });
 
     it('returns `false` when user does not have the given permission', () => {
       const permissions = [ADMIN_TOOLS_VIEW, STATS_VIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasPermission(state, THEMES_REVIEW)).toEqual(false);
     });
 
     it('returns `false` when user state has no permissions', () => {
-      const { state } = dispatchSignInActions({ permissions: null });
+      const { state } = dispatchSignInActions({ user: { permissions: null } });
 
       expect(hasPermission(state, THEMES_REVIEW)).toEqual(false);
     });
@@ -147,7 +147,7 @@ describe(__filename, () => {
 
     it('returns `true` when user is admin', () => {
       const permissions = [ALL_SUPER_POWERS];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
 
       expect(hasPermission(state, THEMES_REVIEW)).toEqual(true);
@@ -157,34 +157,34 @@ describe(__filename, () => {
   describe('hasAnyReviewerRelatedPermission selector', () => {
     it('returns `true` when user has ADDONS_POSTREVIEW', () => {
       const permissions = [ADDONS_POSTREVIEW, STATS_VIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(true);
     });
 
     it('returns `true` when user has ADDONS_CONTENTREVIEW', () => {
       const permissions = [STATS_VIEW, ADDONS_CONTENTREVIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(true);
     });
 
     it('returns `true` when user has ADDONS_REVIEW', () => {
       const permissions = [ADDONS_REVIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(true);
     });
 
     it('returns `false` when user does not have any reviewer permissions', () => {
       const permissions = [COLLECTIONS_EDIT, STATS_VIEW];
-      const { state } = dispatchSignInActions({ permissions });
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(false);
     });
 
     it('returns `false` when user state has no permissions', () => {
-      const { state } = dispatchSignInActions({ permissions: null });
+      const { state } = dispatchSignInActions({ user: { permissions: null } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(false);
     });
@@ -197,8 +197,7 @@ describe(__filename, () => {
 
     it('returns `true` when user is admin', () => {
       const permissions = [ALL_SUPER_POWERS];
-      const { state } = dispatchSignInActions({ permissions });
-
+      const { state } = dispatchSignInActions({ user: { permissions } });
 
       expect(hasAnyReviewerRelatedPermission(state)).toEqual(true);
     });
@@ -207,7 +206,9 @@ describe(__filename, () => {
   describe('getDisplayName selector', () => {
     it('sets the display name when user has a display name', () => {
       const displayName = 'King of the Elephants';
-      const { state } = dispatchSignInActions({ display_name: displayName });
+      const { state } = dispatchSignInActions({
+        user: { display_name: displayName },
+      });
 
       expect(getDisplayName(getCurrentUser(state.users))).toEqual(displayName);
     });
@@ -216,8 +217,7 @@ describe(__filename, () => {
       const username = 'babar';
       const displayName = null;
       const { state } = dispatchSignInActions({
-        display_name: displayName,
-        username,
+        user: { display_name: displayName, username },
       });
 
       expect(getDisplayName(getCurrentUser(state.users))).toEqual(username);
@@ -227,8 +227,7 @@ describe(__filename, () => {
       const username = 'babar';
       const displayName = undefined;
       const { state } = dispatchSignInActions({
-        display_name: displayName,
-        username,
+        user: { display_name: displayName, username },
       });
 
       expect(getDisplayName(getCurrentUser(state.users))).toEqual(username);
@@ -238,8 +237,7 @@ describe(__filename, () => {
       const username = 'babar';
       const displayName = '';
       const { state } = dispatchSignInActions({
-        display_name: displayName,
-        username,
+        user: { display_name: displayName, username },
       });
 
       expect(getDisplayName(getCurrentUser(state.users))).toEqual(username);
@@ -247,7 +245,9 @@ describe(__filename, () => {
 
     it('returns the username when user did not define a display name', () => {
       const username = 'babar';
-      const { state } = dispatchSignInActions({ username });
+      const { state } = dispatchSignInActions({
+        user: { display_name: undefined, username },
+      });
 
       expect(getDisplayName(getCurrentUser(state.users))).toEqual(username);
     });

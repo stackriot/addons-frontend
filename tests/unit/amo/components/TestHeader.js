@@ -68,8 +68,10 @@ describe(__filename, () => {
   it('displays a menu and the display name when user is signed in', () => {
     const displayName = 'King of the Elephants';
     const { store } = dispatchSignInActions({
-      display_name: displayName,
-      username: 'babar',
+      user: {
+        display_name: displayName,
+        username: 'babar',
+      },
     });
     const wrapper = renderHeader({ store });
 
@@ -78,7 +80,7 @@ describe(__filename, () => {
   });
 
   it('displays the username when user is signed in but has no display name', () => {
-    const { store } = dispatchSignInActions({ username: 'babar' });
+    const { store } = dispatchSignInActions({ user: { username: 'babar' } });
     const wrapper = renderHeader({ store });
 
     expect(wrapper.find(DropdownMenu)).toHaveLength(1);
@@ -86,7 +88,7 @@ describe(__filename, () => {
   });
 
   it("displays user's collection when user is signed in", () => {
-    const { store } = dispatchSignInActions({ username: 'babar' });
+    const { store } = dispatchSignInActions({ user: { username: 'babar' } });
     const wrapper = renderHeader({ store });
     const link = wrapper.find('.Header-user-menu-collections-link');
 
@@ -95,7 +97,7 @@ describe(__filename, () => {
   });
 
   it('allows a signed-in user to log out', () => {
-    const { store } = dispatchSignInActions({ username: 'babar' });
+    const { store } = dispatchSignInActions({ user: { username: 'babar' } });
     const handleLogOut = sinon.stub();
 
     const wrapper = renderHeader({ store, handleLogOut });
@@ -110,8 +112,10 @@ describe(__filename, () => {
 
   it('displays the reviewer tools link when user has a reviewer permission', () => {
     const { store } = dispatchSignInActions({
-      username: 'babar',
-      permissions: ['Addons:PostReview'],
+      user: {
+        permissions: ['Addons:PostReview'],
+        username: 'babar',
+      },
     });
     const wrapper = renderHeader({ store });
     const link = wrapper.find('.Header-user-menu-reviewer-tools-link');
@@ -122,7 +126,7 @@ describe(__filename, () => {
   });
 
   it('does not display the reviewer tools link when user does not have permission', () => {
-    const { store } = dispatchSignInActions({ username: 'babar' });
+    const { store } = dispatchSignInActions({ user: { username: 'babar' } });
     const wrapper = renderHeader({ store });
     const link = wrapper.find('.Header-user-menu-reviewer-tools-link');
 
