@@ -16,7 +16,7 @@ import {
 import AddonReviewCard from 'amo/components/AddonReviewCard';
 import AddonReviewManagerRating from 'amo/components/AddonReviewManagerRating';
 import RatingManagerNotice from 'amo/components/RatingManagerNotice';
-import ReportAbuseButton from 'amo/components/ReportAbuseButton';
+import RatingsByStar from 'amo/components/RatingsByStar';
 import { selectLatestUserReview } from 'amo/reducers/reviews';
 import AuthenticateButton from 'amo/components/AuthenticateButton';
 import {
@@ -30,7 +30,7 @@ import { withRenderedErrorHandler } from 'amo/errorHandler';
 import translate from 'amo/i18n/translate';
 import log from 'amo/logger';
 import { sanitizeHTML } from 'amo/utils';
-import { genericType, successType } from 'amo/components/Notice';
+import Notice, { genericType, successType } from 'amo/components/Notice';
 import UserRating from 'amo/components/UserRating';
 import type { FlashMessageType, UserReviewType } from 'amo/actions/reviews';
 import type { UserId } from 'amo/reducers/users';
@@ -53,6 +53,7 @@ type PropsFromState = {|
   deletingReview: boolean,
   editingReview: boolean,
   flashMessage?: FlashMessageType | void,
+  siteIsReadOnly: boolean,
   userId: UserId | null,
   userReview?: UserReviewType | null,
 |};
@@ -167,17 +168,61 @@ export class RatingManagerBase extends React.Component<InternalProps> {
     return [STARTED_SAVE_RATING, SAVED_RATING].includes(flashMessage);
   }
 
+  renderRatingControl(): React.Node {
+    const {
+      beginningToDeleteReview,
+      deletingReview,
+      i18n,
+      siteIsReadOnly,
+      userReview,
+    } = this.props;
+
+    if (siteIsReadOnly) {
+      return (
+        <Notice type="warningInfo" light>
+          {
+            // l10n: This is shown on the rating manager of an add-on detail page when the site is put in read-only mode (for maintenance), which prevents users from rating said add-on.
+            i18n.gettext('Add-on ratings are temporarily disabled.')
+          }
+        </Notice>
+      );
+    }
+
+    const onDeleteScreen = beginningToDeleteReview || deletingReview;
+
+    return [
+      this.isSignedIn()
+        ? i18n.gettext('Click to rate:')
+        : this.renderLogInToRate(),
+      userReview && onDeleteScreen ? (
+        <AddonReviewManagerRating
+          className="RatingManager-AddonReviewManagerRating"
+          onSelectRating={undefined}
+          rating={userReview.score}
+        />
+      ) : (
+        <UserRating
+          className="RatingManager-UserRating"
+          readOnly={!this.isSignedIn()}
+          onSelectRating={this.onSelectRating}
+          review={!this.isSignedIn() ? null : userReview}
+        />
+      ),
+    ];
+  }
+
   renderUserRatingForm(): React.Node {
     const {
       addon,
       beginningToDeleteReview,
       deletingReview,
-      i18n,
       flashMessage,
+      i18n,
       userReview,
     } = this.props;
 
     const onDeleteScreen = beginningToDeleteReview || deletingReview;
+
     let prompt;
     if (userReview && onDeleteScreen) {
       if (userReview.body) {
@@ -190,14 +235,14 @@ export class RatingManagerBase extends React.Component<InternalProps> {
           'Are you sure you want to delete your rating of %(addonName)s?',
         );
       }
-    } else {
-      prompt = i18n.gettext('How are you enjoying %(addonName)s?');
     }
 
-    const promptHTML = sanitizeHTML(
-      i18n.sprintf(prompt, { addonName: `<b>${addon.name}</b>` }),
-      ['b'],
-    );
+    const promptHTML = prompt
+      ? sanitizeHTML(
+          i18n.sprintf(prompt, { addonName: `<b>${addon.name}</b>` }),
+          ['b'],
+        )
+      : null;
 
     return (
       <form action="">
@@ -208,23 +253,11 @@ export class RatingManagerBase extends React.Component<InternalProps> {
             dangerouslySetInnerHTML={promptHTML}
           />
           {/* eslint-enable react/no-danger */}
+
           <div className="RatingManager-ratingControl">
-            {!this.isSignedIn() ? this.renderLogInToRate() : null}
-            {userReview && onDeleteScreen ? (
-              <AddonReviewManagerRating
-                className="RatingManager-AddonReviewManagerRating"
-                onSelectRating={undefined}
-                rating={userReview.score}
-              />
-            ) : (
-              <UserRating
-                className="RatingManager-UserRating"
-                readOnly={!this.isSignedIn()}
-                onSelectRating={this.onSelectRating}
-                review={!this.isSignedIn() ? null : userReview}
-              />
-            )}
+            {this.renderRatingControl()}
           </div>
+
           <RatingManagerNotice
             className={
               userReview && userReview.body
@@ -268,7 +301,7 @@ export class RatingManagerBase extends React.Component<InternalProps> {
             slim
           />
         )}
-        {addon.type !== ADDON_TYPE_LANG && <ReportAbuseButton addon={addon} />}
+        <RatingsByStar addon={addon} />
       </div>
     );
   }
@@ -310,8 +343,9 @@ export const mapStateToProps = (
     deletingReview,
     editingReview,
     flashMessage: state.reviews.flashMessage,
-    userReview,
+    siteIsReadOnly: state.site.readOnly,
     userId,
+    userReview,
   };
 };
 

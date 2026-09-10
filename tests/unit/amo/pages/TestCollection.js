@@ -1,3 +1,4 @@
+/* global window */
 import config from 'config';
 import { createEvent, fireEvent, waitFor } from '@testing-library/react';
 import defaultUserEvent from '@testing-library/user-event';
@@ -12,6 +13,8 @@ import { extractId as editableCollectionAddonExtractId } from 'amo/components/Ed
 import {
   ADDON_TYPE_STATIC_THEME,
   CLIENT_APP_FIREFOX,
+  COLLECTION_ADD_ADDON_CATEGORY,
+  COLLECTION_CREATE_STARTED_CATEGORY,
   COLLECTION_SORT_DATE_ADDED_DESCENDING,
   COLLECTION_SORT_NAME,
   FEATURED_THEMES_COLLECTION_EDIT,
@@ -19,6 +22,8 @@ import {
   INSTALL_SOURCE_SUGGESTIONS,
   MOZILLA_COLLECTIONS_EDIT,
 } from 'amo/constants';
+import tracking from 'amo/tracking';
+import { hrefLangs } from 'amo/languages';
 import {
   FETCH_CURRENT_COLLECTION,
   FETCH_CURRENT_COLLECTION_PAGE,
@@ -63,6 +68,7 @@ import {
   fakeI18n,
   fakePreview,
   getElement,
+  getElements,
   getMockConfig,
   renderPage as defaultRender,
   screen,
@@ -80,6 +86,12 @@ jest.mock('amo/localState', () =>
 );
 
 jest.mock('config');
+
+jest.mock('amo/tracking', () => ({
+  ...jest.requireActual('amo/tracking'),
+  sendEvent: jest.fn(),
+  setPageVariables: jest.fn(),
+}));
 
 describe(__filename, () => {
   let history;
@@ -598,15 +610,9 @@ describe(__filename, () => {
       ],
     });
 
-    const expectedQuerystring = [
-      'utm_source=addons.mozilla.org',
-      'utm_medium=referral',
-      'utm_content=collection',
-    ].join('&');
-
     expect(screen.getByRole('link', { name: addonName })).toHaveAttribute(
       'href',
-      `/${lang}/${clientApp}/addon/${fakeAddon.slug}/?${expectedQuerystring}`,
+      `/${lang}/${clientApp}/addon/${fakeAddon.slug}/`,
     );
     expect(screen.getByAltText(addonName)).toHaveAttribute(
       'src',
@@ -628,15 +634,9 @@ describe(__filename, () => {
       location: `${getLocation()}?addonInstallSource=${INSTALL_SOURCE_SUGGESTIONS}`,
     });
 
-    const expectedQuerystring = [
-      'utm_source=addons.mozilla.org',
-      'utm_medium=referral',
-      `utm_content=${INSTALL_SOURCE_SUGGESTIONS}`,
-    ].join('&');
-
     expect(screen.getByRole('link', { name: addonName })).toHaveAttribute(
       'href',
-      `/${lang}/${clientApp}/addon/${fakeAddon.slug}/?${expectedQuerystring}`,
+      `/${lang}/${clientApp}/addon/${fakeAddon.slug}/`,
     );
   });
 
@@ -1147,6 +1147,49 @@ describe(__filename, () => {
     );
   });
 
+  it('renders canonical and alternate links for mozilla collections', async () => {
+    renderWithCollection({
+      detailProps: { authorId: mozillaUserId },
+      userId: mozillaUserId,
+    });
+
+    const getExpectedURL = (locale, app) => {
+      return `${config.get(
+        'baseURL',
+      )}/${locale}/${app}/collections/${mozillaUserId}/${defaultSlug}/`;
+    };
+
+    await waitFor(() =>
+      expect(getElement('link[rel="canonical"]')).toHaveAttribute(
+        'href',
+        getExpectedURL('en-US', 'firefox'),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(getElement('link[rel="alternate"]')).toBeInTheDocument(),
+    );
+
+    expect(getElements('link[rel="alternate"]')).toHaveLength(hrefLangs.length);
+
+    const hrefLangsMap = config.get('hrefLangsMap');
+    hrefLangs.forEach((hrefLang) => {
+      const locale = hrefLangsMap[hrefLang] || hrefLang;
+      expect(
+        getElement(`link[rel="alternate"][hreflang="${hrefLang}"]`),
+      ).toHaveAttribute('href', getExpectedURL(locale, 'firefox'));
+    });
+  });
+
+  it('does not render canonical and alternate links for non-mozilla collections', async () => {
+    renderWithCollection();
+
+    await waitFor(() =>
+      expect(getElement('meta[name="description"]')).toBeInTheDocument(),
+    );
+    expect(getElements('link[rel="canonical"]')).toHaveLength(0);
+  });
+
   describe('errorHandler - extractId', () => {
     it('returns a unique ID based on params', () => {
       const props = {
@@ -1231,6 +1274,24 @@ describe(__filename, () => {
           userId: defaultUserId,
         }),
       );
+    });
+
+    it('sends a tracking event when selecting an add-on', async () => {
+      const addonName = 'uBlock Origin';
+      const id = 123;
+      renderWithCollectionForSignedInUser({ editing: true });
+
+      tracking.sendEvent.mockClear();
+
+      await selectAnAddon({ addonName, id });
+
+      expect(tracking.sendEvent).toHaveBeenCalledWith({
+        category: COLLECTION_ADD_ADDON_CATEGORY,
+        params: expect.objectContaining({
+          extension_name: addonName,
+          page_path: window.location.pathname,
+        }),
+      });
     });
 
     it('displays a notification for 5 seconds after an add-on has been added', async () => {
@@ -1752,6 +1813,49 @@ describe(__filename, () => {
           userId: defaultUserId,
         }),
       );
+    });
+
+    it('sends a tracking event when creating a collection on submit', async () => {
+      renderInAddMode();
+
+      const name = 'A collection name';
+      const description = 'A collection description';
+      const slug = 'collection-slug';
+
+      await fillInDetailsScreen({ description, name, slug });
+
+      tracking.sendEvent.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Create collection' }),
+      );
+
+      expect(tracking.sendEvent).toHaveBeenCalledWith({
+        category: COLLECTION_CREATE_STARTED_CATEGORY,
+        params: { page_path: window.location.pathname },
+      });
+    });
+
+    it('does not send a tracking event when updating a collection on submit', async () => {
+      renderWithCollectionForSignedInUser({
+        location: `${defaultLocation}?page=1`,
+      });
+
+      await accessEditDetailsScreen();
+
+      const name = 'A new name';
+      const description = 'A new description';
+      const slug = 'new-slug';
+
+      await fillInDetailsScreen({ description, name, slug });
+
+      tracking.sendEvent.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+
+      expect(tracking.sendEvent).not.toHaveBeenCalled();
     });
 
     it('creates a collection with an add-on on submit', async () => {

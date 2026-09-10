@@ -4,8 +4,29 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 99
+    cooldown:
+      default-days: 7
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 99
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "ua-parser-js"
+        versions: ["2.x"]
+  - package-ecosystem: "github-actions"
+    directories:
+    - "/"
+    - "/.github/actions/*"
+    schedule:
+      interval: daily
+    groups:
+      ssdlc-actions:
+        patterns:
+          - "mozilla/ssdlc-actions/*"      
+    open-pull-requests-limit: 99
+    cooldown:
+      default-days: 7

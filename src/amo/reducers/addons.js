@@ -1,5 +1,6 @@
 /* @flow */
 import invariant from 'invariant';
+import config from 'config';
 
 import { CLIENT_APP_ANDROID, ADDON_TYPE_EXTENSION } from 'amo/constants';
 import {
@@ -11,6 +12,7 @@ import type {
   UpdateRatingCountsAction,
 } from 'amo/actions/reviews';
 import {
+  makeInternalPromoted,
   selectLocalizedContent,
   selectCategoryObject,
 } from 'amo/reducers/utils';
@@ -19,6 +21,7 @@ import type { ExternalAddonInfoType } from 'amo/api/addonInfo';
 import type { AppState } from 'amo/store';
 import type {
   AddonType,
+  CollectionAddonType,
   ExternalAddonType,
   ExternalPreviewType,
   GroupedRatingsType,
@@ -194,7 +197,9 @@ export const selectLocalizedUrlWithOutgoing = (
 ): UrlWithOutgoing | null => {
   if (url && url.url && url.outgoing) {
     return {
+      // $FlowIgnore: this can't be `null` because we check before.
       url: selectLocalizedContent(url.url, lang),
+      // $FlowIgnore: this can't be `null` because we check before.
       outgoing: selectLocalizedContent(url.outgoing, lang),
     };
   }
@@ -229,14 +234,16 @@ export function createInternalAddon(
     is_disabled: apiAddon.is_disabled,
     is_experimental: apiAddon.is_experimental,
     is_source_public: apiAddon.is_source_public,
+    is_noindexed: apiAddon.is_noindexed,
     last_updated: apiAddon.last_updated,
     latest_unlisted_version: apiAddon.latest_unlisted_version,
     locale_disambiguation: apiAddon.locale_disambiguation,
+    // $FlowIgnore: the add-on's name cannot be falsey.
     name: selectLocalizedContent(apiAddon.name, lang),
     previews: apiAddon.previews
       ? createInternalPreviews(apiAddon.previews, lang)
       : undefined,
-    promoted: apiAddon.promoted,
+    promoted: makeInternalPromoted(apiAddon.promoted),
     ratings: apiAddon.ratings,
     requires_payment: apiAddon.requires_payment,
     review_url: apiAddon.review_url,
@@ -329,6 +336,20 @@ export const isAddonInfoLoading = ({
 
   const infoForSlug = state.infoBySlug[slug];
   return Boolean(infoForSlug && infoForSlug.loading);
+};
+
+export const isRecentAddon = (
+  addon: ?AddonType | CollectionAddonType | null,
+  { _config = config }: { _config: typeof config } = {},
+): boolean => {
+  if (!addon) {
+    return false;
+  }
+
+  const created = new Date(addon.created);
+  created.setDate(created.getDate() + _config.get('recentAddonCutOffDays'));
+
+  return created >= new Date();
 };
 
 export const createInternalAddonInfo = (

@@ -11,7 +11,7 @@ import createSagaMiddleware from 'redux-saga';
 import NestedStatus from 'react-nested-status';
 import supertest from 'supertest';
 import defaultConfig from 'config';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import { configureStore } from '@reduxjs/toolkit';
 
 import { REGION_CODE_HEADER, createApiError } from 'amo/api';
@@ -611,13 +611,15 @@ describe(__filename, () => {
 
       expect(response.statusCode).toEqual(200);
       const [auth_cookie, session_cookie] = response.headers['set-cookie'];
-      expect(auth_cookie).toContain(
-        `${defaultConfig.get('cookieName')}=; Max-Age=0;`,
-      );
+      expect(auth_cookie).toContain(`${defaultConfig.get('cookieName')}=;`);
+      expect(auth_cookie).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT;');
       expect(auth_cookie).toContain('Domain=.addons.mozilla.org;');
       expect(auth_cookie).toContain('Path=/;');
       expect(auth_cookie).toContain('HttpOnly; Secure; SameSite=Lax');
-      expect(session_cookie).toContain(`sessionid=; Max-Age=0;`);
+      expect(session_cookie).toContain(`sessionid=;`);
+      expect(session_cookie).toContain(
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT;',
+      );
       expect(session_cookie).toContain('Domain=.addons.mozilla.org;');
       expect(session_cookie).toContain('Path=/;');
       expect(session_cookie).toContain('HttpOnly; Secure; SameSite=Lax');
@@ -745,6 +747,18 @@ describe(__filename, () => {
       const history = createHistory({ req: request });
 
       expect(history).toHaveProperty('location.query');
+    });
+  });
+
+  describe('heartbeat', () => {
+    it('returns a 200 for the __frontend_heartbeat__ endpoint', async () => {
+      const response = await testClient().get('/__frontend_heartbeat__/');
+      expect(response.statusCode).toEqual(200);
+    });
+
+    it('returns a 200 for the __frontend_lbheartbeat__ endpoint', async () => {
+      const response = await testClient().get('/__frontend_lbheartbeat__/');
+      expect(response.statusCode).toEqual(200);
     });
   });
 });

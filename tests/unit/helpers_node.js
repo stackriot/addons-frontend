@@ -1,4 +1,5 @@
 import config from 'config';
+import { Util } from 'config/lib/util';
 
 export function createUserAccountResponse({
   id = 123456,
@@ -72,7 +73,18 @@ export const getFakeConfig = (
       );
     }
   }
-  return Object.assign(config.util.cloneDeep(config), params);
+  // `Util.cloneDeep` walks enumerable string keys via `for...in`, which skips
+  // node-config's private symbol (used internally by `.get()`) and the
+  // non-enumerable `util` property. Copy both so `.get()` works on the clone.
+  const fakeConfig = Util.cloneDeep(config);
+  for (const sym of Object.getOwnPropertySymbols(config)) {
+    fakeConfig[sym] = config[sym];
+  }
+  const utilDescriptor = Object.getOwnPropertyDescriptor(config, 'util');
+  if (utilDescriptor) {
+    Object.defineProperty(fakeConfig, 'util', utilDescriptor);
+  }
+  return Object.assign(fakeConfig, params);
 };
 
 export const getFakeLogger = (params = {}) => {

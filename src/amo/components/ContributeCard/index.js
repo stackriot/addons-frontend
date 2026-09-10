@@ -1,35 +1,46 @@
 /* @flow */
+/* global window */
 import * as React from 'react';
 import { compose } from 'redux';
+import { connect } from 'react-redux';
+import makeClassName from 'classnames';
 
 import { ADDON_TYPE_EXTENSION, ADDON_TYPE_STATIC_THEME } from 'amo/constants';
 import translate from 'amo/i18n/translate';
-import tracking from 'amo/tracking';
+import tracking, { getAddonEventParams } from 'amo/tracking';
+import { getPromotedCategory } from 'amo/utils/addons';
 import Button from 'amo/components/Button';
-import Card from 'amo/components/Card';
 import Icon from 'amo/components/Icon';
 import type { AddonType } from 'amo/types/addons';
+import type { AppState } from 'amo/store';
 import type { I18nType } from 'amo/types/i18n';
 
 import './styles.scss';
 
-export const CONTRIBUTE_BUTTON_CLICK_ACTION = 'contribute-click';
 export const CONTRIBUTE_BUTTON_CLICK_CATEGORY =
-  'AMO Addon / Contribute Button Clicks';
+  'amo_addon_contribute_button_clicks';
 
 type Props = {|
   addon: AddonType | null,
   i18n: I18nType,
 |};
 
+type PropsFromState = {|
+  clientApp: string,
+|};
+
 type InternalProps = {|
   ...Props,
+  ...PropsFromState,
   _tracking: typeof tracking,
+  _getPromotedCategory: typeof getPromotedCategory,
 |};
 
 export const ContributeCardBase = ({
   _tracking = tracking,
+  _getPromotedCategory = getPromotedCategory,
   addon,
+  clientApp,
   i18n,
 }: InternalProps): null | React.Node => {
   if (!addon || (addon && !addon.contributions_url)) {
@@ -87,14 +98,21 @@ export const ContributeCardBase = ({
 
   const onButtonClick = () => {
     _tracking.sendEvent({
-      action: CONTRIBUTE_BUTTON_CLICK_ACTION,
       category: CONTRIBUTE_BUTTON_CLICK_CATEGORY,
-      label: addon.guid,
+      params: {
+        ...getAddonEventParams(addon, window.location.pathname),
+        trusted: !!_getPromotedCategory({ addon, clientApp }),
+      },
     });
   };
 
+  const addonType = addon ? addon.type : ADDON_TYPE_EXTENSION;
+
   return (
-    <Card className="ContributeCard" header={header}>
+    <div
+      className={makeClassName('ContributeCard', `ContributeCard-${addonType}`)}
+    >
+      <header className="ContributeCard-header">{header}</header>
       <p className="ContributeCard-content">{content}</p>
       <p>
         <Button
@@ -112,12 +130,19 @@ export const ContributeCardBase = ({
           {i18n.gettext('Contribute now')}
         </Button>
       </p>
-    </Card>
+    </div>
   );
 };
 
-const ContributeCard: React.ComponentType<Props> = compose(translate())(
-  ContributeCardBase,
-);
+const mapStateToProps = (state: AppState): PropsFromState => {
+  return {
+    clientApp: state.api.clientApp,
+  };
+};
+
+const ContributeCard: React.ComponentType<Props> = compose(
+  connect(mapStateToProps),
+  translate(),
+)(ContributeCardBase);
 
 export default ContributeCard;

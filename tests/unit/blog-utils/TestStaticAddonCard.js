@@ -86,19 +86,9 @@ describe(__filename, () => {
     ).toBeInTheDocument();
   });
 
-  it('displays the description if there is no summary', () => {
-    const addon = createInternalAddonWithLang({ ...fakeAddon, summary: null });
-
-    render({ addon });
-
-    expect(screen.getByText(addon.description)).toBeInTheDocument();
-  });
-
-  it('sanitizes the summary', () => {
-    const plainText = 'Some safe text';
-    const scriptHTML = createLocalizedString(
-      `${plainText}<script>alert(document.cookie);</script>`,
-    );
+  it('renders html as plaintext', () => {
+    const plainText = '<script>alert(document.cookie);</script>';
+    const scriptHTML = createLocalizedString(plainText);
 
     render({
       addon: createInternalAddonWithLang({
@@ -107,61 +97,9 @@ describe(__filename, () => {
       }),
     });
 
+    expect(screen.getByText(plainText)).toBeInTheDocument();
     // Make sure an actual script tag was not created.
     expect(screen.queryByTagName('script')).not.toBeInTheDocument();
-    // Make sure the script has been removed.
-    expect(screen.getByText(plainText)).toBeInTheDocument();
-    expect(
-      screen.getByClassName('StaticAddonCard-summary'),
-    ).not.toHaveTextContent('<script>');
-  });
-
-  it('displays the number of users', () => {
-    const average_daily_users = 1234567;
-    const addon = createInternalAddonWithLang({
-      ...fakeAddon,
-      average_daily_users,
-    });
-    render({ addon });
-
-    expect(screen.getByText('Users: 1,234,567')).toBeInTheDocument();
-  });
-
-  it('shows 0 users', () => {
-    const addon = createInternalAddonWithLang({
-      ...fakeAddon,
-      average_daily_users: 0,
-    });
-
-    render({ addon });
-    expect(screen.getByText('Users: 0')).toBeInTheDocument();
-  });
-
-  it('displays ratings', () => {
-    const average = 4.3;
-    const addon = createInternalAddonWithLang({
-      ...fakeAddon,
-      ratings: { average },
-    });
-
-    render({ addon });
-
-    const ratings = screen.getAllByTitle(`Rated ${average} out of 5`);
-    expect(ratings[0]).toHaveClass('Rating--small');
-    expect(ratings).toHaveLength(6);
-  });
-
-  it('shows 0 ratings', () => {
-    const addon = createInternalAddonWithLang({
-      ...fakeAddon,
-      ratings: {
-        average: 0,
-      },
-    });
-
-    render({ addon });
-
-    expect(screen.getByText('There are no ratings yet')).toBeInTheDocument();
   });
 
   it('renders a theme image preview when add-on is a theme', () => {
@@ -189,7 +127,7 @@ describe(__filename, () => {
   it('overrides some query parameters in the download FF link', () => {
     const addon = createInternalAddonWithLang(fakeAddon);
     const expectedHref = [
-      'https://www.mozilla.org/firefox/download/thanks/?s=direct',
+      'https://www.firefox.com/thanks/?s=direct',
       `utm_campaign=amo-blog-fx-cta-${addon.id}`,
       'utm_content=rta%3AMTIzNEBteS1hZGRvbnMuZmlyZWZveA',
       'utm_medium=referral',
@@ -202,5 +140,56 @@ describe(__filename, () => {
         name: 'Download Firefox and get the extension',
       }),
     ).toHaveAttribute('href', expectedHref);
+  });
+
+  describe('AddonBadges', () => {
+    it('renders the AddonBadges component with addon badges', () => {
+      const addon = createInternalAddonWithLang({
+        ...fakeAddon,
+        average_daily_users: 12345,
+        promoted: { category: RECOMMENDED, apps: [CLIENT_APP_FIREFOX] },
+      });
+
+      render({ addon });
+
+      // Verify that badges are rendered
+      expect(screen.getByTestId('badge-recommended')).toBeInTheDocument();
+      expect(screen.getByTestId('badge-star-full')).toBeInTheDocument();
+      expect(screen.getByTestId('badge-user-fill')).toBeInTheDocument();
+
+      // Verify badge content
+      expect(screen.getByTestId('badge-recommended')).toHaveTextContent(
+        'Recommended',
+      );
+      expect(screen.getByTestId('badge-user-fill')).toHaveTextContent(
+        '12,345 Users',
+      );
+    });
+
+    it('renders user count badge with proper formatting', () => {
+      const addon = createInternalAddonWithLang({
+        ...fakeAddon,
+        average_daily_users: 1000000,
+      });
+
+      render({ addon });
+
+      const userBadge = screen.getByTestId('badge-user-fill');
+      expect(userBadge).toBeInTheDocument();
+      expect(userBadge).toHaveTextContent('1,000,000 Users');
+    });
+
+    it('renders zero users badge correctly', () => {
+      const addon = createInternalAddonWithLang({
+        ...fakeAddon,
+        average_daily_users: 0,
+      });
+
+      render({ addon });
+
+      const userBadge = screen.getByTestId('badge-user-fill');
+      expect(userBadge).toBeInTheDocument();
+      expect(userBadge).toHaveTextContent('No Users');
+    });
   });
 });

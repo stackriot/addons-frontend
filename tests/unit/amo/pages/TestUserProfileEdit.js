@@ -1,4 +1,3 @@
-/* global window */
 import { createMemoryHistory } from 'history';
 import userEvent from '@testing-library/user-event';
 import { createEvent, fireEvent, waitFor } from '@testing-library/react';
@@ -11,6 +10,7 @@ import {
   USERS_EDIT,
   VIEW_CONTEXT_HOME,
 } from 'amo/constants';
+import { setAuthToken } from 'amo/reducers/api';
 import { clearError } from 'amo/reducers/errors';
 import {
   FETCH_USER_ACCOUNT,
@@ -23,6 +23,7 @@ import {
   finishUpdateUserAccount,
   getCurrentUser,
   getUserById,
+  loadCurrentUserAccount,
   loadUserAccount,
   loadUserNotifications,
   logOutUser,
@@ -42,6 +43,7 @@ import {
   getElement,
   renderPage as defaultRender,
   screen,
+  userAuthSessionId,
   within,
 } from 'tests/unit/helpers';
 
@@ -53,20 +55,19 @@ describe(__filename, () => {
   const defaultUserId = fakeAuthors[0].id;
   let history;
   let store;
-
-  const savedLocation = window.location;
+  let fakeWindow;
 
   beforeEach(() => {
     store = dispatchClientMetadata({ clientApp, lang }).store;
-    delete window.location;
-    window.location = Object.assign(new URL('https://example.org'), {
-      assign: jest.fn(),
-    });
-    window.scroll = jest.fn();
-  });
-
-  afterEach(() => {
-    window.location = savedLocation;
+    // jsdom no longer allows replacing the global window.location, so we inject
+    // a fake `_window` (threaded from <App> down to the page) for the code that
+    // navigates and scrolls.
+    fakeWindow = {
+      location: Object.assign(new URL('https://example.org'), {
+        assign: jest.fn(),
+      }),
+      scroll: jest.fn(),
+    };
   });
 
   function defaultUserProps(props = {}) {
@@ -99,6 +100,7 @@ describe(__filename, () => {
 
   const render = ({ location, userId } = {}) => {
     const renderOptions = {
+      _window: fakeWindow,
       initialEntries: [location || getLocation(userId)],
       store,
     };
@@ -426,6 +428,45 @@ describe(__filename, () => {
     );
   });
 
+  it('dispatches updateUserAccount action with default values if undefined beforehand', async () => {
+    const dispatch = jest.spyOn(store, 'dispatch');
+    const displayName = 'Name';
+    const userId = defaultUserId;
+
+    store.dispatch(setAuthToken(userAuthSessionId()));
+    store.dispatch(
+      loadCurrentUserAccount({
+        user: {
+          id: userId,
+          display_name: displayName,
+          username: 'username-123',
+        },
+      }),
+    );
+    render({ userId });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Update My Profile' }),
+    );
+
+    expect(dispatch).toHaveBeenCalledWith(
+      updateUserAccount({
+        errorHandlerId: getErrorHandlerId(userId),
+        notifications: {},
+        picture: null,
+        pictureData: null,
+        userFields: {
+          biography: '',
+          display_name: displayName,
+          homepage: '',
+          location: '',
+          occupation: '',
+        },
+        userId,
+      }),
+    );
+  });
+
   it('renders a create button', () => {
     renderForCurrentUser({ display_name: '' });
 
@@ -575,7 +616,7 @@ describe(__filename, () => {
         ).not.toBeDisabled(),
       );
 
-      expect(window.location.assign).toHaveBeenCalledWith(expectedURL);
+      expect(fakeWindow.location.assign).toHaveBeenCalledWith(expectedURL);
       return true;
     };
 
@@ -631,15 +672,15 @@ describe(__filename, () => {
       const to = '/addon/some-slug/';
       const expectedURL = `/${lang}/${clientApp}/user/${defaultUserId}/`;
 
-      window.location.assign.mockImplementationOnce(() => {
+      fakeWindow.location.assign.mockImplementationOnce(() => {
         throw new Error();
       });
-      window.location.assign.mockImplementationOnce(() => null);
+      fakeWindow.location.assign.mockImplementationOnce(() => null);
 
       expect(await testRedirect({ expectedURL, to })).toBeTruthy();
 
-      expect(window.location.assign).toHaveBeenCalledWith(to);
-      expect(window.location.assign).toHaveBeenCalledWith(expectedURL);
+      expect(fakeWindow.location.assign).toHaveBeenCalledWith(to);
+      expect(fakeWindow.location.assign).toHaveBeenCalledWith(expectedURL);
     });
   });
 
@@ -721,7 +762,7 @@ describe(__filename, () => {
     // the component when the server processes the request OR the user
     // navigates to the edit profile page and, in both cases, the scroll will
     // be at the top of the page.
-    expect(window.scroll).not.toHaveBeenCalled();
+    expect(fakeWindow.scroll).not.toHaveBeenCalled();
   });
 
   it('displays an AuthenticateButton if current user is not logged-in', () => {
@@ -827,7 +868,7 @@ describe(__filename, () => {
       screen.queryByAltText(`Profile picture for ${user.display_name}`),
     ).not.toBeInTheDocument();
 
-    expect(window.scroll).toHaveBeenCalledWith(0, 0);
+    expect(fakeWindow.scroll).toHaveBeenCalledWith(0, 0);
   });
 
   it('displays a modal when user clicks the delete profile button', () => {
@@ -998,7 +1039,7 @@ describe(__filename, () => {
 
     createFailedErrorHandler({ id: getErrorHandlerId(userId), store });
 
-    await waitFor(() => expect(window.scroll).toHaveBeenCalledWith(0, 0));
+    await waitFor(() => expect(fakeWindow.scroll).toHaveBeenCalledWith(0, 0));
   });
 
   it('does not scroll if we already scrolled because of an error', async () => {
@@ -1006,15 +1047,15 @@ describe(__filename, () => {
 
     createFailedErrorHandler({ id: getErrorHandlerId(userId), store });
 
-    await waitFor(() => expect(window.scroll).toHaveBeenCalledWith(0, 0));
-    window.scroll.mockClear();
+    await waitFor(() => expect(fakeWindow.scroll).toHaveBeenCalledWith(0, 0));
+    fakeWindow.scroll.mockClear();
 
     await changeLocation({
       history,
       pathname: getLocation(userId),
     });
 
-    expect(window.scroll).not.toHaveBeenCalled();
+    expect(fakeWindow.scroll).not.toHaveBeenCalled();
   });
 
   it('does not scroll if we already scrolled because of a success message', async () => {
@@ -1025,15 +1066,15 @@ describe(__filename, () => {
     // which displays a success message.
     store.dispatch(loadUserAccount({ user: { ...user, picture_url: null } }));
 
-    await waitFor(() => expect(window.scroll).toHaveBeenCalledWith(0, 0));
-    window.scroll.mockClear();
+    await waitFor(() => expect(fakeWindow.scroll).toHaveBeenCalledWith(0, 0));
+    fakeWindow.scroll.mockClear();
 
     await changeLocation({
       history,
       pathname: getLocation(user.id),
     });
 
-    expect(window.scroll).not.toHaveBeenCalled();
+    expect(fakeWindow.scroll).not.toHaveBeenCalled();
   });
 
   it('does not show any message when navigating to a new user profile', async () => {

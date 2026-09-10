@@ -28,10 +28,12 @@ export type VersionIdType = number;
 
 export type AddonFileType = {|
   created: string,
+  data_collection_permissions?: Array<string>,
   hash: string,
   id: number,
   is_mozilla_signed_extension: boolean,
   host_permissions: Array<string>,
+  optional_data_collection_permissions?: Array<string>,
   optional_permissions: Array<string>,
   permissions: Array<string>,
   platform: 'all' | 'android' | 'mac' | 'linux' | 'windows',
@@ -75,7 +77,7 @@ export type ExternalVersionLicenseType = {|
 
 type PartialVersionLicenseType = {|
   name: string | null,
-  text?: string,
+  text: string | null,
   url: string,
 |};
 
@@ -96,7 +98,7 @@ export type AddonVersionType = {
   isStrictCompatibilityEnabled: boolean,
   license: VersionLicenseType | null,
   file: AddonFileType | null,
-  releaseNotes?: string,
+  releaseNotes: string | null,
   version: string,
 };
 
@@ -144,7 +146,7 @@ export const createInternalVersion = (
           name: selectLocalizedContent(version.license.name, lang),
           text:
             version.license.text === undefined
-              ? undefined
+              ? null
               : selectLocalizedContent(version.license.text, lang),
           url: version.license.url,
         }

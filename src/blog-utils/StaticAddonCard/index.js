@@ -4,15 +4,11 @@ import makeClassName from 'classnames';
 
 import { ADDON_TYPE_STATIC_THEME } from 'amo/constants';
 import { getAddonIconUrl } from 'amo/imageUtils';
-import { nl2br, sanitizeHTML } from 'amo/utils';
 import AddonBadges from 'amo/components/AddonBadges';
 import AddonTitle from 'amo/components/AddonTitle';
 import GetFirefoxButton from 'amo/components/GetFirefoxButton';
-import Rating from 'amo/components/Rating';
 import ThemeImage from 'amo/components/ThemeImage';
-import translate from 'amo/i18n/translate';
 import type { AddonType } from 'amo/types/addons';
-import type { I18nType } from 'amo/types/i18n';
 
 import './styles.scss';
 
@@ -20,20 +16,11 @@ type Props = {|
   addon: AddonType,
 |};
 
-type InternalProps = {|
-  ...Props,
-  i18n: I18nType,
-|};
-
-export const StaticAddonCardBase = ({
-  addon,
-  i18n,
-}: InternalProps): React.Node => {
+export const StaticAddonCardBase = ({ addon }: Props): React.Node => {
   if (!addon) {
     return null;
   }
 
-  const summary = addon.summary ? addon.summary : addon.description;
   const isTheme = addon.type === ADDON_TYPE_STATIC_THEME;
 
   return (
@@ -64,18 +51,7 @@ export const StaticAddonCardBase = ({
       <AddonBadges addon={addon} />
 
       <div className="StaticAddonCard-summary">
-        <p
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={sanitizeHTML(nl2br(summary), ['a', 'br'])}
-        />
-      </div>
-
-      <div className="StaticAddonCard-metadata">
-        <Rating rating={addon.ratings.average} readOnly styleSize="small" />
-
-        <p className="StaticAddonCard-metadata-adu">
-          Users: {i18n.formatNumber(addon.average_daily_users)}
-        </p>
+        <p>{addon.summary}</p>
       </div>
 
       <div className="StaticAddonCard-firefox-button">
@@ -96,7 +72,5 @@ export const StaticAddonCardBase = ({
   );
 };
 
-const StaticAddonCard: React.ComponentType<Props> =
-  translate()(StaticAddonCardBase);
-
+const StaticAddonCard: React.ComponentType<Props> = StaticAddonCardBase;
 export default StaticAddonCard;

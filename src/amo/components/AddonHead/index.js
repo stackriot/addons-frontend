@@ -145,12 +145,15 @@ export class AddonHeadBase extends React.Component<InternalProps> {
       return null;
     }
 
+    const isNoindexed = !!addon?.is_noindexed;
     const lastUpdated = versionInfo && versionInfo.created;
 
     return (
       <>
         <Helmet titleTemplate={null}>
           <title>{this.getPageTitle()}</title>
+
+          {isNoindexed && <meta name="robots" content="noindex, follow" />}
 
           <script type="application/ld+json">
             {serialize(_getAddonJsonLinkedData({ addon, currentVersion }), {
@@ -166,7 +169,6 @@ export class AddonHeadBase extends React.Component<InternalProps> {
           image={getPreviewImage(addon)}
           lastModified={lastUpdated}
           title={this.getPageTitle()}
-          withTwitterMeta={addon.type === ADDON_TYPE_EXTENSION}
         />
 
         <HeadLinks />

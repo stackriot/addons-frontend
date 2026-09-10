@@ -9,6 +9,7 @@ import {
   DEFAULT_UTM_SOURCE,
   DOWNLOAD_FIREFOX_UTM_CAMPAIGN,
   PROMOTED_ADDONS_SUMO_URL,
+  QR_CODE_UTM_CAMPAIGN,
 } from 'amo/constants';
 import {
   addQueryParamsToHistory,
@@ -16,12 +17,12 @@ import {
   apiAddonTypeIsValid,
   checkInternalURL,
   convertBoolean,
+  getAddonListingURL,
   getAddonURL,
   getCanonicalURL,
   getClientApp,
   getClientConfig,
   getClientAppAndLangFromPath,
-  getPromotedBadgesLinkUrl,
   isAddonAuthor,
   isValidClientApp,
   makeQueryStringWithUTM,
@@ -34,6 +35,7 @@ import {
   stripLangFromAmoUrl,
   visibleAddonType,
 } from 'amo/utils';
+import { getPromotedBadgesLinkUrl } from 'amo/utils/promoted';
 import {
   createFakeHistory,
   createFakeLocation,
@@ -45,6 +47,41 @@ import {
 } from 'tests/unit/helpers';
 
 describe(__filename, () => {
+  describe('getAddonListingURL', () => {
+    const baseURL = 'https://example.org';
+    it('returns the correct listing URL for given parameters', () => {
+      const _config = getFakeConfig({ baseURL });
+      const addon = { ...fakeAddon, slug: 'some-slug' };
+      expect(
+        getAddonListingURL({
+          _config,
+          addon,
+          clientApp: CLIENT_APP_FIREFOX,
+          lang: 'en-US',
+        }),
+      ).toEqual(
+        `${baseURL}/en-US/${CLIENT_APP_FIREFOX}/addon/${addon.slug}/?utm_source=${DEFAULT_UTM_SOURCE}`,
+      );
+    });
+
+    it('adds UTM campaign and content params when provided', () => {
+      const _config = getFakeConfig({ baseURL });
+      const addon = { ...fakeAddon, slug: 'some-slug' };
+      expect(
+        getAddonListingURL({
+          _config,
+          addon,
+          clientApp: CLIENT_APP_ANDROID,
+          lang: 'en-US',
+          utmCampaign: QR_CODE_UTM_CAMPAIGN,
+          utmContent: addon.slug,
+        }),
+      ).toEqual(
+        `${baseURL}/en-US/${CLIENT_APP_ANDROID}/addon/${addon.slug}/?utm_campaign=${QR_CODE_UTM_CAMPAIGN}&utm_content=${addon.slug}&utm_source=${DEFAULT_UTM_SOURCE}`,
+      );
+    });
+  });
+
   describe('getCanonicalURL', () => {
     it(`returns an absolute canonical URL`, () => {
       const locationPathname = '/path/name';
@@ -672,10 +709,20 @@ describe(__filename, () => {
       expect(sanitize(customHtml)).toEqual(customHtml);
     });
 
+    it('can disallow links', () => {
+      const customHtml =
+        '<b>check</b> <i>out</i> <a href="http://mysite">my site</a>';
+      expect(sanitize(customHtml, { allowLinks: false })).toEqual(
+        '<b>check</b> <i>out</i> my site',
+      );
+    });
+
     it('does not allow certain tags', () => {
       expect(
-        sanitize('<b>my add-on</b> <script>alert("does XSS")</script>'),
-      ).toEqual('<b>my add-on</b> ');
+        sanitize(
+          '<b id="foo">my add-on</b> <script>alert("does XSS")</script>',
+        ),
+      ).toEqual('<b id="user-content-foo">my add-on</b> ');
     });
 
     it('does nothing to null values', () => {
@@ -696,6 +743,139 @@ describe(__filename, () => {
       const html = '<a href="http://example.org" target="_blank">link</a>';
       expect(sanitizeHTML(html, ['a'])).toEqual({
         __html: '<a href="http://example.org">link</a>',
+      });
+    });
+
+    it('removes aria attributes', () => {
+      const html = '<strong aria-label="foo">bar</strong>';
+      expect(sanitizeHTML(html, ['strong'])).toEqual({
+        __html: '<strong>bar</strong>',
+      });
+    });
+
+    it('removes data attributes', () => {
+      const html = '<strong data-foo="bar">alice</strong>';
+      expect(sanitizeHTML(html, ['strong'])).toEqual({
+        __html: '<strong>alice</strong>',
+      });
+    });
+
+    it('removes style attributes', () => {
+      const html = '<strong style="color: red">foo</strong>';
+      expect(sanitizeHTML(html, ['strong'])).toEqual({
+        __html: '<strong>foo</strong>',
+      });
+    });
+
+    it('removes class attributes', () => {
+      const html = '<strong class="foo">bar</strong>';
+      expect(sanitizeHTML(html, ['strong'])).toEqual({
+        __html: '<strong>bar</strong>',
+      });
+    });
+
+    it('allows attributes to be allowed back', () => {
+      const html = '<strong class="foo">bar</strong>';
+      expect(sanitizeHTML(html, ['strong'], ['class'])).toEqual({
+        __html: '<strong class="foo">bar</strong>',
+      });
+    });
+
+    it('sanitizes named props', () => {
+      const html = '<strong id="foo">bar</strong>';
+      expect(sanitizeHTML(html, ['strong'])).toEqual({
+        __html: '<strong id="user-content-foo">bar</strong>',
+      });
+    });
+
+    describe('custom `<li>` handling through hook', () => {
+      it('removes `<li>` if not allowed', () => {
+        const html = '<li>witness me!</li>';
+        expect(sanitizeHTML(html, [])).toEqual({
+          __html: 'witness me!',
+        });
+
+        expect(sanitizeHTML(html)).toEqual({
+          __html: 'witness me!',
+        });
+      });
+
+      it('does not wrap `<li>` inside a `<ul>` if not allowed', () => {
+        const html = '<li>witness me!</li>';
+        expect(sanitizeHTML(html, ['li'])).toEqual({
+          __html: '<li>witness me!</li>',
+        });
+      });
+
+      it('wraps `<li>` inside a `<ul>` if they dont already', () => {
+        const html = '<li>witness me!</li>';
+        expect(sanitizeHTML(html, ['li', 'ul'])).toEqual({
+          __html: '<ul><li>witness me!</li></ul>',
+        });
+      });
+
+      it('wraps `<li>` inside a `<ul>` if their parent was not allowed', () => {
+        const html = '<ol><li>witness me!</li></ol>';
+        expect(sanitizeHTML(html, ['li', 'ul'])).toEqual({
+          __html: '<ul><li>witness me!</li></ul>',
+        });
+      });
+
+      it('doesnt wrap `<li>` inside a `<ul>` if not necessary', () => {
+        const html = '<ul><li>witness me!</li></ul>';
+        expect(sanitizeHTML(html, ['li', 'ul'])).toEqual({
+          __html: '<ul><li>witness me!</li></ul>',
+        });
+      });
+
+      it('doesnt wrap `<li>` inside a `<ul>` if not necessary with ol', () => {
+        const html = '<ol><li>witness me!</li></ol>';
+        expect(sanitizeHTML(html, ['li', 'ol', 'ul'])).toEqual({
+          __html: '<ol><li>witness me!</li></ol>',
+        });
+      });
+
+      it('doesnt wrap `<li>` inside a `<ul>` if not necessary with menu', () => {
+        const html = '<menu><li>witness me!</li></menu>';
+        expect(sanitizeHTML(html, ['li', 'menu', 'ul'])).toEqual({
+          __html: '<menu><li>witness me!</li></menu>',
+        });
+      });
+
+      it('handles multiple `<li>`', () => {
+        const html = '<li>foo</li><li>bar</li>';
+        expect(sanitizeHTML(html, ['li', 'ul'])).toEqual({
+          __html: '<ul><li>foo</li><li>bar</li></ul>',
+        });
+      });
+
+      it('handles multiple `<li>` when one does not need fixing', () => {
+        const html = '<li>foo</li><ul><li>bar</li></ul>';
+        expect(sanitizeHTML(html, ['li', 'ul'])).toEqual({
+          __html: '<ul><li>foo</li></ul><ul><li>bar</li></ul>',
+        });
+      });
+
+      it('handles multiple `<li>` in separate lists', () => {
+        const html = '<li>foo</li><code>alice</code><li>bar</li>';
+        expect(sanitizeHTML(html, ['li', 'ul', 'code'])).toEqual({
+          __html:
+            '<ul><li>foo</li></ul><code>alice</code><ul><li>bar</li></ul>',
+        });
+      });
+
+      it('handles no closing `</li>`', () => {
+        const html = '<li>foo<li>bar';
+        expect(sanitizeHTML(html, ['li', 'ul', 'p'])).toEqual({
+          __html: '<ul><li>foo</li><li>bar</li></ul>',
+        });
+      });
+
+      it('does not mess ordering`', () => {
+        const html = 'Before <li>foo</li><li>bar</li> After';
+        expect(sanitizeHTML(html, ['li', 'ul', 'p'])).toEqual({
+          __html: 'Before <ul><li>foo</li><li>bar</li></ul> After',
+        });
       });
     });
   });

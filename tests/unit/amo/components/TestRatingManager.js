@@ -20,11 +20,10 @@ import {
   setReview,
   updateAddonReview,
 } from 'amo/actions/reviews';
+import { loadSiteStatus } from 'amo/reducers/site';
 import RatingManager from 'amo/components/RatingManager';
-import { loadAddonAbuseReport } from 'amo/reducers/abuse';
 import {
   createFailedErrorHandler,
-  createFakeAddonAbuseReport,
   createInternalAddonWithLang,
   createInternalVersionWithLang,
   createLocalizedString,
@@ -112,7 +111,7 @@ describe(__filename, () => {
     return { addon, review };
   };
 
-  it('prompts you to rate the add-on by name', () => {
+  it('doesnt show any prompt when not deleting', () => {
     const name = 'Some Add-on';
     render({
       addon: createInternalAddonWithLang({
@@ -121,9 +120,7 @@ describe(__filename, () => {
       }),
     });
 
-    expect(
-      screen.getByTextAcrossTags(`How are you enjoying ${name}?`),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(`of ${name}?`)).not.toBeInTheDocument();
   });
 
   it('dispatches fetchLatestUserReview on construction', () => {
@@ -509,45 +506,6 @@ describe(__filename, () => {
     });
   });
 
-  describe('Tests for ReportAbuseButton', () => {
-    it('does not render an abuse button for a langpack', () => {
-      const addon = createInternalAddonWithLang({
-        ...fakeAddon,
-        type: ADDON_TYPE_LANG,
-      });
-
-      render({ addon });
-
-      expect(
-        screen.queryByClassName('ReportAbuseButton'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('allows a user to report an add-on for abuse', async () => {
-      render();
-
-      const link = screen.getByRole('link', { name: 'Report this add-on' });
-      expect(link).toHaveAttribute('rel', 'nofollow');
-    });
-
-    it('shows a success message when feedback has been submitted', () => {
-      const addon = fakeAddon;
-      const abuseResponse = createFakeAddonAbuseReport({
-        addon,
-        message: 'some report message',
-      });
-
-      store.dispatch(loadAddonAbuseReport(abuseResponse));
-      render({ addon });
-
-      expect(
-        screen.getByRole('heading', {
-          name: 'You reported this add-on',
-        }),
-      ).toBeInTheDocument();
-    });
-  });
-
   describe('Tests for AddonReviewManagerRating', () => {
     it('lets you specify className', async () => {
       renderWithReview();
@@ -574,5 +532,48 @@ describe(__filename, () => {
       // When Rating is in readOnly mode, the title for all stars is as below.
       expect(screen.getAllByTitle('Rated 3 out of 5')).toHaveLength(6);
     });
+  });
+
+  it('renders a notice instead of the rating control when the site is in read-only mode', () => {
+    store.dispatch(loadSiteStatus({ readOnly: true, notice: null }));
+    renderWithReview();
+
+    expect(
+      screen.getByText('Add-on ratings are temporarily disabled.'),
+    ).toBeInTheDocument();
+
+    // The rating control should not be rendered.
+    expect(
+      screen.queryByClassName('RatingManager-UserRating'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the rating control when the site is not in read-only mode', () => {
+    store.dispatch(loadSiteStatus({ readOnly: false, notice: null }));
+    renderWithReview();
+
+    expect(
+      screen.queryByText('Add-on ratings are temporarily disabled.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByClassName('RatingManager-UserRating'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders RatingsByStar with an add-on', () => {
+    const addon = fakeAddon;
+    render({ addon });
+
+    // Do a sanity check to make sure the right add-on was used.
+    const links = screen.getAllByTitle('There are no five-star reviews');
+    // 3 because we have the same link 3 times (1 per column in the rating
+    // component).
+    expect(links).toHaveLength(3);
+    for (const link of links) {
+      expect(link).toHaveAttribute(
+        'href',
+        `/en-US/android/addon/${addon.slug}/reviews/?score=5`,
+      );
+    }
   });
 });

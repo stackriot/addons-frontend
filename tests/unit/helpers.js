@@ -145,7 +145,7 @@ export const fakeVersion = Object.freeze({
 export const fakeAddon = Object.freeze({
   authors: [fakeAuthor],
   average_daily_users: 100,
-  categories: { firefox: ['other'] },
+  categories: ['other'],
   contributions_url: null,
   created: '2014-11-22T10:09:01Z',
   current_version: fakeVersion,
@@ -171,6 +171,7 @@ export const fakeAddon = Object.freeze({
   is_disabled: false,
   is_experimental: false,
   is_source_public: true,
+  is_noindexed: false,
   last_updated: '2018-11-22T10:09:01Z',
   name: createLocalizedString('Chill Out'),
   previews: [fakePreview],
@@ -299,7 +300,6 @@ export function createExternalReview({
 }
 
 export const fakeCategory = Object.freeze({
-  application: CLIENT_APP_FIREFOX,
   description: 'I am a cool category for doing things',
   id: 5,
   misc: false,
@@ -807,6 +807,8 @@ export const userAgentsByPlatform = {
       Firefox/69.0`,
     firefox70: oneLine`Mozilla/5.0 (Android 9; Mobile; rv:70.0) Gecko/70.0
       Firefox/70.0`,
+    firefox136: oneLine`Mozilla/5.0 (Android 15; Mobile; rv:136.0) Gecko/136.0
+      Firefox/136.0`,
   },
   bsd: {
     firefox40FreeBSD: oneLine`Mozilla/5.0 (X11; FreeBSD amd64; rv:40.0)
@@ -843,6 +845,10 @@ export const userAgentsByPlatform = {
       Gecko/20100101 Firefox/61.0`,
     firefox69: oneLine`Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:69.0)
       Gecko/20100101 Firefox/69.0`,
+    firefox128: oneLine`Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:128.0)
+      Gecko/20100101 Firefox/128.0`,
+    firefox136: oneLine`Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:136.0)
+      Gecko/20100101 Firefox/136.0`,
   },
   unix: {
     firefox51: oneLine`Mozilla/51.0.2 (X11; Unix x86_64; rv:29.0)
@@ -851,6 +857,8 @@ export const userAgentsByPlatform = {
   windows: {
     firefox40: oneLine`Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0)
       Gecko/20100101 Firefox/40.1`,
+    firefox115: oneLine`Mozilla/5.0 (Windows NT 6.1; WOW64; rv:115.0)
+      Gecko/20100101 Firefox/115.0`,
   },
 };
 
@@ -1051,20 +1059,23 @@ export const getMockConfig = (overrides = {}) => {
  * mockWindow.expects('fetch').withArgs(urlWithTheseParams({ page: 1 }))
  */
 export const urlWithTheseParams = (params) => {
-  return sinon.match((urlString) => {
-    const { query } = urllib.parse(urlString, true);
+  return sinon.match(
+    (urlString) => {
+      const { query } = urllib.parse(urlString, true);
 
-    for (const param in params) {
-      if (
-        query[param] === undefined ||
-        query[param] !== params[param].toString()
-      ) {
-        return false;
+      for (const param in params) {
+        if (
+          query[param] === undefined ||
+          query[param] !== params[param].toString()
+        ) {
+          return false;
+        }
       }
-    }
 
-    return true;
-  }, `urlWithTheseParams(${JSON.stringify(params)})`);
+      return true;
+    },
+    `urlWithTheseParams(${JSON.stringify(params)})`,
+  );
 };
 
 /*
@@ -1193,10 +1204,7 @@ export function fakeCookies(overrides = {}) {
 
 export const createFakeTracking = (overrides = {}) => {
   return {
-    pageView: jest.fn(),
     sendEvent: jest.fn(),
-    setDimension: jest.fn(),
-    setPage: jest.fn(),
     setUserProperties: jest.fn(),
     ...overrides,
   };
@@ -1313,7 +1321,8 @@ export const createFakeBlockResult = ({
     created: '2020-01-22T10:09:01Z',
     modified: '2020-01-22T10:09:01Z',
     guid,
-    versions: ['0.1', '4.56'],
+    blocked: ['0.1', '4.56'],
+    soft_blocked: [],
     is_all_versions: false,
     addon_name: addonName,
     reason,
@@ -1388,10 +1397,8 @@ export const createFailedErrorHandler = ({
 };
 
 export const fakeTrackingEvent = Object.freeze({
-  action: 'some-action',
   category: 'some-category',
-  label: 'some-label',
-  value: 19,
+  params: { page_path: '/some/path' },
 });
 
 export const makeExperimentId = (id) => `20210219_amo_${id}`;
@@ -1541,7 +1548,7 @@ export const render = (ui, options = {}) => {
   };
 
   const result = libraryRender(ui, { wrapper });
-  return { ...result, history, root: result.container.firstChild };
+  return { ...result, history, store, root: result.container.firstChild };
 };
 /* eslint-enable testing-library/no-node-access */
 
@@ -1563,8 +1570,10 @@ export const renderPage = (options = {}) => {
   window.scrollTo = jest.fn();
 
   // Render the App component, which will use the location from options to
-  // render the correct page.
-  return render(<App />, options);
+  // render the correct page. `_window` can be injected so that pages which
+  // navigate (and would otherwise touch the immutable global window.location)
+  // can be tested.
+  return render(<App _window={options._window} />, options);
 };
 
 export const getSearchErrorHandlerId = (page) =>

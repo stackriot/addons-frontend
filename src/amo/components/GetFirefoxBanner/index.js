@@ -1,4 +1,5 @@
 /* @flow */
+/* global window */
 import * as React from 'react';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
@@ -10,12 +11,8 @@ import {
   GET_FIREFOX_BANNER_UTM_CONTENT,
 } from 'amo/constants';
 import Button from 'amo/components/Button';
-import {
-  GET_FIREFOX_BUTTON_CLICK_CATEGORY,
-  getDownloadLink,
-} from 'amo/components/GetFirefoxButton';
+import { getDownloadLink } from 'amo/components/GetFirefoxButton';
 import Notice from 'amo/components/Notice';
-import Link from 'amo/components/Link';
 import tracking from 'amo/tracking';
 import { isFirefox } from 'amo/utils/compatibility';
 import translate from 'amo/i18n/translate';
@@ -27,11 +24,10 @@ import type { ReactRouterLocationType } from 'amo/types/router';
 
 import './styles.scss';
 
-export const GET_FIREFOX_BANNER_CLICK_ACTION = 'download-firefox-banner-click';
-export const GET_FIREFOX_BANNER_DISMISS_ACTION =
-  'download-firefox-banner-dismiss';
+export const GET_FIREFOX_BANNER_CLICK_CATEGORY =
+  'amo_download_firefox_banner_click';
 export const GET_FIREFOX_BANNER_DISMISS_CATEGORY =
-  'AMO Download Firefox Banner';
+  'amo_download_firefox_banner';
 
 export type Props = {||};
 
@@ -61,15 +57,15 @@ export const GetFirefoxBannerBase = ({
 }: InternalProps): null | React.Node => {
   const onButtonClick = () => {
     _tracking.sendEvent({
-      action: GET_FIREFOX_BANNER_CLICK_ACTION,
-      category: GET_FIREFOX_BUTTON_CLICK_CATEGORY,
+      category: GET_FIREFOX_BANNER_CLICK_CATEGORY,
+      params: { page_path: window.location.pathname },
     });
   };
 
   const onDismiss = () => {
     _tracking.sendEvent({
-      action: GET_FIREFOX_BANNER_DISMISS_ACTION,
       category: GET_FIREFOX_BANNER_DISMISS_CATEGORY,
+      params: { page_path: window.location.pathname },
     });
   };
 
@@ -105,27 +101,13 @@ export const GetFirefoxBannerBase = ({
     ],
   ];
 
-  if (clientApp === CLIENT_APP_ANDROID) {
-    replacements.push([
-      'linkStart',
-      'linkEnd',
-      (text) => (
-        <Link to={`/${CLIENT_APP_FIREFOX}/`} prependClientApp={false}>
-          {text}
-        </Link>
-      ),
-    ]);
-  }
-
   const bannerContent = replaceStringsWithJSX({
     text:
       clientApp === CLIENT_APP_FIREFOX
         ? i18n.gettext(`To use these add-ons, you'll need to
             %(downloadLinkStart)sdownload Firefox%(downloadLinkEnd)s.`)
         : i18n.gettext(`To use Android extensions, you'll need
-            %(downloadLinkStart)sFirefox for Android%(downloadLinkEnd)s. To
-            explore Firefox for desktop add-ons, please %(linkStart)svisit our
-            desktop site%(linkEnd)s.`),
+            %(downloadLinkStart)sFirefox for Android%(downloadLinkEnd)s.`),
     replacements,
   });
 

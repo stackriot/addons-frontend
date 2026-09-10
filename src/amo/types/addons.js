@@ -59,7 +59,7 @@ export type ExternalLanguageToolType = {|
 
 export type LanguageToolType = {|
   ...ExternalLanguageToolType,
-  name: string,
+  name: string | null,
 |};
 
 export type PromotedType = {|
@@ -83,7 +83,7 @@ export type PreviewType = {|
   thumbnail_h: number,
   thumbnail_src: string,
   thumbnail_w: number,
-  title: string,
+  title: string | null,
   w: number,
 |};
 
@@ -108,7 +108,7 @@ export type GroupedRatingsType = {|
 export type ExternalAddonType = {|
   authors?: Array<AddonAuthorType>,
   average_daily_users: number,
-  categories?: Object | Array<string>,
+  categories?: Array<string>,
   contributions_url: UrlWithOutgoing | null,
   created: Date,
   // If you make an API request as an admin for an incomplete
@@ -128,12 +128,13 @@ export type ExternalAddonType = {|
   is_disabled?: boolean,
   is_experimental?: boolean,
   is_source_public?: boolean,
+  is_noindexed?: boolean,
   last_updated: Date | null,
   latest_unlisted_version?: ?ExternalAddonVersionType,
   locale_disambiguation?: string,
   name: LocalizedString,
   previews?: Array<ExternalPreviewType>,
-  promoted: PromotedType | null,
+  promoted: Array<PromotedType> | PromotedType | null,
   ratings: {|
     average: number,
     bayesian_average: number,
@@ -174,6 +175,8 @@ export type AddonType = {|
   summary: string | null,
   support_email: string | null,
   support_url: UrlWithOutgoing | null,
+  // normalized promoted categories,
+  promoted: Array<PromotedType>,
   // Here are some custom properties for our internal representation.
   currentVersionId: VersionIdType | null,
   isMozillaSignedExtension: boolean,

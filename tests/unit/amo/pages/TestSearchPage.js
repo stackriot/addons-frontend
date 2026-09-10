@@ -1,7 +1,7 @@
 // We shouldn't use `cleanup()` but this test file uses it anyway in
 // `testWithFilters()`, which should be refactored eventually...
 // eslint-disable-next-line testing-library/no-manual-cleanup
-import { cleanup, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { setViewContext } from 'amo/actions/viewContext';
@@ -24,7 +24,6 @@ import {
   SEARCH_SORT_TOP_RATED,
   SEARCH_SORT_POPULAR,
   SET_VIEW_CONTEXT,
-  VERIFIED_FILTER,
   VIEW_CONTEXT_HOME,
 } from 'amo/constants';
 import { fetchCategories, loadCategories } from 'amo/reducers/categories';
@@ -42,6 +41,7 @@ import {
   getSearchErrorHandlerId,
   renderPage as defaultRender,
   screen,
+  within,
 } from 'tests/unit/helpers';
 
 describe(__filename, () => {
@@ -536,18 +536,6 @@ describe(__filename, () => {
         'Reviewed add-ons',
       ],
       [
-        { type: ADDON_TYPE_EXTENSION, promoted: VERIFIED_FILTER },
-        'Verified extensions',
-      ],
-      [
-        { type: ADDON_TYPE_STATIC_THEME, promoted: VERIFIED_FILTER },
-        'Verified themes',
-      ],
-      [
-        { type: ADDON_TYPE_LANG, promoted: VERIFIED_FILTER },
-        'Verified add-ons',
-      ],
-      [
         { type: ADDON_TYPE_EXTENSION, sort: SEARCH_SORT_TRENDING },
         'Trending extensions',
       ],
@@ -705,6 +693,71 @@ describe(__filename, () => {
           page: '1',
           promoted: RECOMMENDED,
           query,
+        }),
+      });
+    });
+
+    it('shows the color filter when filtering by Theme Add-on type', async () => {
+      render({ type: ADDON_TYPE_STATIC_THEME });
+
+      expect(
+        screen.getByClassName('SearchFilters-ThemeColors'),
+      ).toBeInTheDocument();
+    });
+
+    it('does not show the color filter when filtering by Extension Add-on type', async () => {
+      render({ type: ADDON_TYPE_EXTENSION });
+
+      expect(
+        screen.queryByClassName('SearchFilters-ThemeColors'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not show the color filter when not filtering by Add-on type', async () => {
+      render();
+
+      expect(
+        screen.queryByClassName('SearchFilters-ThemeColors'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('changes the URL to filter by corresponding color when a color is clicked on', async () => {
+      await render({ type: ADDON_TYPE_STATIC_THEME });
+      const pushSpy = jest.spyOn(history, 'push');
+
+      await userEvent.click(
+        within(
+          screen.getByClassName('SearchFilter-ThemeColors-ColorItem--green'),
+        ).getByRole('button'),
+      );
+
+      expect(pushSpy).toHaveBeenCalledWith({
+        pathname: defaultLocation,
+        query: convertFiltersToQueryParams({
+          color: '00ff00',
+          addonType: ADDON_TYPE_STATIC_THEME,
+        }),
+      });
+    });
+
+    it('changes the URL to filter by color when a custom color is entered in the input type=color', async () => {
+      await render({ type: ADDON_TYPE_STATIC_THEME });
+      const pushSpy = jest.spyOn(history, 'push');
+
+      fireEvent.change(
+        within(
+          screen.getByClassName('SearchFilter-ThemeColors-ColorItem--custom'),
+        ).getByTagName('input'),
+        {
+          target: { value: '#336699' },
+        },
+      );
+
+      expect(pushSpy).toHaveBeenCalledWith({
+        pathname: defaultLocation,
+        query: convertFiltersToQueryParams({
+          color: '336699',
+          addonType: ADDON_TYPE_STATIC_THEME,
         }),
       });
     });
@@ -1077,7 +1130,6 @@ describe(__filename, () => {
         results: [
           {
             ...fakeCategory,
-            application: CLIENT_APP_FIREFOX, // Unified categories ignore android applications
             type: ADDON_TYPE_EXTENSION,
             name: categoryName,
             slug: category,

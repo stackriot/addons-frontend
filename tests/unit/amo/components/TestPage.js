@@ -8,11 +8,9 @@ import { setViewContext } from 'amo/actions/viewContext';
 import { logOutFromServer } from 'amo/api';
 import Page from 'amo/components/Page';
 import {
-  GET_FIREFOX_BANNER_CLICK_ACTION,
-  GET_FIREFOX_BANNER_DISMISS_ACTION,
+  GET_FIREFOX_BANNER_CLICK_CATEGORY,
   GET_FIREFOX_BANNER_DISMISS_CATEGORY,
 } from 'amo/components/GetFirefoxBanner';
-import { GET_FIREFOX_BUTTON_CLICK_CATEGORY } from 'amo/components/GetFirefoxButton';
 import {
   ADDONS_REVIEW,
   ADDON_TYPE_EXTENSION,
@@ -55,6 +53,7 @@ jest.mock('config');
 // We are also asserting on the calling of sendEvent in some tests.
 jest.mock('amo/tracking', () => ({
   sendEvent: jest.fn(),
+  setPageVariables: jest.fn(),
 }));
 
 // We need to mock logOutFromServer as it is called directly and we want
@@ -68,17 +67,14 @@ describe(__filename, () => {
   let history;
   let store;
   let userEvent;
-
-  const savedLocation = window.location;
+  let fakeWindow;
 
   afterEach(() => {
     jest.clearAllMocks().resetModules();
-    window.location = savedLocation;
   });
 
   beforeEach(() => {
     store = dispatchClientMetadata().store;
-    delete window.location;
     userEvent = defaultUserEvent.setup({ delay: null });
   });
 
@@ -93,14 +89,21 @@ describe(__filename, () => {
       initialEntries: [location],
       store,
     };
-    window.location = Object.assign(new URL(`https://example.org${location}`), {
-      assign: jest.fn(),
-      reload: jest.fn(),
-      replace: jest.fn(),
-    });
+    // jsdom no longer allows replacing the global window.location, so we inject
+    // a fake `_window` into <Page> and thread it down to the components that
+    // navigate (LanguagePicker, AuthExpired).
+    fakeWindow = {
+      location: Object.assign(new URL(`https://example.org${location}`), {
+        assign: jest.fn(),
+        reload: jest.fn(),
+        replace: jest.fn(),
+      }),
+    };
 
     const renderResults = defaultRender(
-      <Page {...props}>{children || <div>Some content</div>}</Page>,
+      <Page _window={fakeWindow} {...props}>
+        {children || <div>Some content</div>}
+      </Page>,
       renderOptions,
     );
     history = renderResults.history;
@@ -119,8 +122,9 @@ describe(__filename, () => {
     render({ isHomePage: true, showWrongPlatformWarning: true });
 
     expect(
-      screen.getByRole('link', { name: 'visit our desktop site' }),
-    ).toHaveAttribute('href', '/');
+      screen.getByRole('link', { name: 'Firefox for Android' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/To use Android extensions/)).toBeInTheDocument();
   });
 
   it('assigns a className to a page other than the home page', () => {
@@ -316,6 +320,17 @@ describe(__filename, () => {
         ).toBeInTheDocument();
       });
 
+      it('does not link to the desktop site', () => {
+        render(props);
+
+        expect(
+          screen.queryByRole('link', { name: 'visit our desktop site' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByText(/explore Firefox for desktop add-ons/),
+        ).not.toBeInTheDocument();
+      });
+
       it('sets the href on the button with the expected utm params', () => {
         render(props);
 
@@ -368,8 +383,8 @@ describe(__filename, () => {
 
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
         expect(tracking.sendEvent).toHaveBeenCalledWith({
-          action: GET_FIREFOX_BANNER_CLICK_ACTION,
-          category: GET_FIREFOX_BUTTON_CLICK_CATEGORY,
+          category: GET_FIREFOX_BANNER_CLICK_CATEGORY,
+          params: { page_path: window.location.pathname },
         });
       });
 
@@ -382,8 +397,8 @@ describe(__filename, () => {
 
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
         expect(tracking.sendEvent).toHaveBeenCalledWith({
-          action: GET_FIREFOX_BANNER_DISMISS_ACTION,
           category: GET_FIREFOX_BANNER_DISMISS_CATEGORY,
+          params: { page_path: window.location.pathname },
         });
       });
     });
@@ -449,8 +464,8 @@ describe(__filename, () => {
 
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
         expect(tracking.sendEvent).toHaveBeenCalledWith({
-          action: GET_FIREFOX_BANNER_CLICK_ACTION,
-          category: GET_FIREFOX_BUTTON_CLICK_CATEGORY,
+          category: GET_FIREFOX_BANNER_CLICK_CATEGORY,
+          params: { page_path: window.location.pathname },
         });
       });
 
@@ -463,8 +478,8 @@ describe(__filename, () => {
 
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
         expect(tracking.sendEvent).toHaveBeenCalledWith({
-          action: GET_FIREFOX_BANNER_DISMISS_ACTION,
           category: GET_FIREFOX_BANNER_DISMISS_CATEGORY,
+          params: { page_path: window.location.pathname },
         });
       });
     });
@@ -765,6 +780,23 @@ describe(__filename, () => {
         expect(screen.getByText('Add-ons for Android')).toBeInTheDocument();
       });
 
+      it('hides the Firefox-only section links for a mobile user agent on the Firefox site', () => {
+        // A mobile user agent switches the clientApp to Android, which hides
+        // the Themes and Language Packs links.
+        _dispatchClientMetadata({
+          clientApp: CLIENT_APP_FIREFOX,
+          userAgent: userAgents.firefoxAndroid[0],
+        });
+        render();
+
+        expect(
+          screen.queryByRole('link', { name: 'Themes' }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('Dictionaries & Language Packs'),
+        ).not.toBeInTheDocument();
+      });
+
       it('renders a DropdownMenu for the "More" section', () => {
         _dispatchClientMetadata({ clientApp: CLIENT_APP_FIREFOX });
         render();
@@ -881,68 +913,91 @@ describe(__filename, () => {
         'https://developer.mozilla.org/docs/Mozilla/Add-ons/Contact_us',
       );
 
-      expect(screen.getByRole('link', { name: 'VPN' })).toHaveAttribute(
+      const footerLinkQueryString = makeQueryStringWithUTM({
+        utm_content: 'footer-link',
+        utm_campaign: null,
+      });
+
+      // Download Section
+      expect(
+        screen.getByRole('link', { name: 'Download Firefox' }),
+      ).toHaveAttribute(
         'href',
-        `https://www.mozilla.org/products/vpn/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}#pricing`,
+        `https://www.firefox.com/thanks/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'Windows' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/windows/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'macOS' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/mac/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'iOS' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/ios/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'Android' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/android/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'Linux' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/linux/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/download/all/${footerLinkQueryString}`,
       );
 
-      expect(screen.getByRole('link', { name: 'Relay' })).toHaveAttribute(
+      // Builds Section
+      expect(screen.getByRole('link', { name: 'Nightly' })).toHaveAttribute(
         'href',
-        `https://relay.firefox.com/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
+        `https://www.firefox.com/en-US/channel/desktop/#nightly${footerLinkQueryString}`,
       );
-
-      expect(screen.getByRole('link', { name: 'Monitor' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Beta' })).toHaveAttribute(
         'href',
-        `https://monitor.firefox.com/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
+        `https://www.firefox.com/en-US/channel/desktop/#beta${footerLinkQueryString}`,
       );
-
-      expect(screen.getByRole('link', { name: 'Browsers' })).toHaveAttribute(
-        'href',
-        `https://www.mozilla.org/firefox/browsers/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
-      );
-
-      expect(screen.getByRole('link', { name: 'Pocket' })).toHaveAttribute(
-        'href',
-        `https://getpocket.com${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
-      );
-
-      expect(screen.getByRole('link', { name: 'Desktop' })).toHaveAttribute(
-        'href',
-        `https://www.mozilla.org/firefox/new/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
-      );
-
-      expect(screen.getByRole('link', { name: 'Mobile' })).toHaveAttribute(
-        'href',
-        `https://www.mozilla.org/firefox/mobile/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
-      );
-
       expect(screen.getByRole('link', { name: 'Enterprise' })).toHaveAttribute(
         'href',
-        `https://www.mozilla.org/firefox/enterprise/${makeQueryStringWithUTM({
-          utm_content: 'footer-link',
-          utm_campaign: null,
-        })}`,
+        `https://www.firefox.com/en-US/browsers/enterprise/${footerLinkQueryString}`,
+      );
+
+      // Community Section
+      expect(screen.getByRole('link', { name: 'Connect' })).toHaveAttribute(
+        'href',
+        `https://connect.mozilla.org/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'Contribute' })).toHaveAttribute(
+        'href',
+        `https://www.mozilla.org/contribute/${footerLinkQueryString}`,
+      );
+      expect(screen.getByRole('link', { name: 'Developer' })).toHaveAttribute(
+        'href',
+        `https://www.firefox.com/en-US/channel/desktop/developer/${footerLinkQueryString}`,
+      );
+
+      // Follow Section
+      expect(screen.getByRole('link', { name: 'Instagram' })).toHaveAttribute(
+        'href',
+        `https://www.instagram.com/firefox`,
+      );
+      expect(screen.getByRole('link', { name: 'YouTube' })).toHaveAttribute(
+        'href',
+        `https://www.youtube.com/user/firefoxchannel`,
+      );
+      expect(screen.getByRole('link', { name: 'TikTok' })).toHaveAttribute(
+        'href',
+        `https://www.tiktok.com/@firefox`,
+      );
+      expect(screen.getByRole('link', { name: 'Bluesky' })).toHaveAttribute(
+        'href',
+        `https://bsky.app/profile/firefox.com`,
+      );
+      expect(screen.getByRole('link', { name: 'Podcast' })).toHaveAttribute(
+        'href',
+        `https://www.youtube.com/@firefox/podcasts`,
       );
 
       expect(
@@ -989,31 +1044,31 @@ describe(__filename, () => {
     });
 
     it('changes the language in the URL on change', async () => {
-      _dispatchClientMetadata({ lang: 'fr' });
-      render({ location: '/fr/firefox/' });
-      expect(window.location.pathname).toEqual('/fr/firefox/');
+      _dispatchClientMetadata({ lang: 'de' });
+      render({ location: '/de/firefox/' });
+      expect(fakeWindow.location.pathname).toEqual('/de/firefox/');
 
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: 'Change language' }),
-        screen.getByRole('option', { name: 'Español' }),
+        screen.getByRole('option', { name: 'Français' }),
       );
 
-      expect(window.location).toEqual('/es/firefox/');
+      expect(fakeWindow.location).toEqual('/fr/firefox/');
     });
 
     it('changes the language in the URL on change with a query', async () => {
-      _dispatchClientMetadata({ lang: 'fr' });
+      _dispatchClientMetadata({ lang: 'de' });
       render({
-        location: '/fr/firefox/?page=1&q=something',
+        location: '/de/firefox/?page=1&q=something',
       });
-      expect(window.location.pathname).toEqual('/fr/firefox/');
+      expect(fakeWindow.location.pathname).toEqual('/de/firefox/');
 
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: 'Change language' }),
-        screen.getByRole('option', { name: 'Español' }),
+        screen.getByRole('option', { name: 'Français' }),
       );
 
-      expect(window.location).toEqual('/es/firefox/?page=1&q=something');
+      expect(fakeWindow.location).toEqual('/fr/firefox/?page=1&q=something');
     });
 
     it('only changes the locale section of the URL', async () => {
@@ -1021,17 +1076,17 @@ describe(__filename, () => {
       render({
         location: '/en-US/firefox/en-US-to-en-GB-guide/?foo=en-US',
       });
-      expect(window.location.pathname).toEqual(
+      expect(fakeWindow.location.pathname).toEqual(
         '/en-US/firefox/en-US-to-en-GB-guide/',
       );
 
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: 'Change language' }),
-        screen.getByRole('option', { name: 'عربي' }),
+        screen.getByRole('option', { name: 'עברית' }),
       );
 
-      expect(window.location).toEqual(
-        '/ar/firefox/en-US-to-en-GB-guide/?foo=en-US',
+      expect(fakeWindow.location).toEqual(
+        '/he/firefox/en-US-to-en-GB-guide/?foo=en-US',
       );
     });
   });
@@ -1165,7 +1220,7 @@ describe(__filename, () => {
         screen.getByRole('link', { name: 'Reload the page' }),
       );
 
-      expect(window.location.reload).toHaveBeenCalled();
+      expect(fakeWindow.location.reload).toHaveBeenCalled();
     });
   });
 

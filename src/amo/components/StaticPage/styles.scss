@@ -1,4 +1,4 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .StaticPage {
   @include page-padding;
@@ -10,7 +10,7 @@
 
   h1,
   h2 {
-    color: $grey-90;
+    color: var(--text-color-default);
   }
 
   h1 {
@@ -23,7 +23,7 @@
   }
 
   h3 {
-    color: $grey-60;
+    color: var(--text-color-default);
   }
 }
 

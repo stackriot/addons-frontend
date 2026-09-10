@@ -1,10 +1,10 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .Search {
   @include respond-to(large) {
     display: grid;
     grid-auto-flow: column dense;
-    grid-gap: $padding-page-l;
+    gap: $padding-page-l;
     grid-template-columns: minmax(300px, 35%) 1fr;
     padding: $padding-page-l;
     padding-top: 0;
@@ -58,7 +58,7 @@
   }
 
   .SearchResults-message {
-    background: $base-color;
+    background: var(--base-color);
     border-bottom-left-radius: $border-radius-default;
     border-bottom-right-radius: $border-radius-default;
     margin-top: 0;

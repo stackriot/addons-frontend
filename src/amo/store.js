@@ -8,6 +8,7 @@ import createSagaMiddleware from 'redux-saga';
 import { createLogger } from 'redux-logger';
 import { configureStore } from '@reduxjs/toolkit';
 
+import addonInstallSource from 'amo/reducers/addonInstallSource';
 import addonsByAuthors from 'amo/reducers/addonsByAuthors';
 import collections from 'amo/reducers/collections';
 import collectionAbuseReports from 'amo/reducers/collectionAbuseReports';
@@ -32,11 +33,13 @@ import installations from 'amo/reducers/installations';
 import redirectTo from 'amo/reducers/redirectTo';
 import search from 'amo/reducers/search';
 import site from 'amo/reducers/site';
+import theme from 'amo/reducers/theme';
 import uiState from 'amo/reducers/uiState';
 import versions from 'amo/reducers/versions';
 import log from 'amo/logger';
 import suggestions from 'amo/reducers/suggestions';
 import type { AddonsByAuthorsState } from 'amo/reducers/addonsByAuthors';
+import type { AddonInstallSourceState } from 'amo/reducers/addonInstallSource';
 import type { BlocksState } from 'amo/reducers/blocks';
 import type { CollectionsState } from 'amo/reducers/collections';
 import type { CollectionAbuseReportsState } from 'amo/reducers/collectionAbuseReports';
@@ -59,6 +62,7 @@ import type { InstallationsState } from 'amo/reducers/installations';
 import type { RedirectToState } from 'amo/reducers/redirectTo';
 import type { SearchState } from 'amo/reducers/search';
 import type { SiteState } from 'amo/reducers/site';
+import type { ThemeState } from 'amo/reducers/theme';
 import type { UIStateState } from 'amo/reducers/uiState';
 import type { VersionsState } from 'amo/reducers/versions';
 import type { SuggestionsState } from 'amo/reducers/suggestions';
@@ -118,6 +122,7 @@ export function middleware({
 
 type InternalAppState = {|
   abuse: AbuseState,
+  addonInstallSource: AddonInstallSourceState,
   addons: AddonsState,
   addonsByAuthors: AddonsByAuthorsState,
   api: ApiState,
@@ -139,6 +144,7 @@ type InternalAppState = {|
   search: SearchState,
   site: SiteState,
   suggestions: SuggestionsState,
+  theme: ThemeState,
   uiState: UIStateState,
   userAbuseReports: UserAbuseReportsState,
   users: UsersState,
@@ -175,6 +181,7 @@ export const createRootReducer = ({
 
 export const reducers: AppReducersType = {
   abuse,
+  addonInstallSource,
   addons,
   addonsByAuthors,
   api,
@@ -196,6 +203,7 @@ export const reducers: AppReducersType = {
   search,
   site,
   suggestions,
+  theme,
   uiState,
   userAbuseReports,
   users,

@@ -1,13 +1,12 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .AddonVersionCard {
   display: grid;
-  grid-gap: $padding-page;
+  gap: $padding-page;
 
   .InstallButtonWrapper {
     grid-column: 1;
     grid-row: 3;
-    width: 100%;
 
     .Button {
       width: 100%;
@@ -47,12 +46,12 @@
 .AddonVersionCard-version {
   @include font-medium;
 
-  color: $link-color;
+  color: var(--link-color);
 }
 
 .AddonVersionCard-fileInfo,
 .AddonVersionCard-compatibility {
-  color: $grey-50;
+  color: var(--sub-text-color);
 }
 
 .AddonVersionCard-releaseNotes {
@@ -65,5 +64,5 @@
 }
 
 .AddonVersionCard-license {
-  color: $grey-50;
+  color: var(--sub-text-color);
 }

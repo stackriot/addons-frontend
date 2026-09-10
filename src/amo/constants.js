@@ -21,8 +21,7 @@ export const LANDING_PAGE_THEME_COUNT = 3;
 export const MOBILE_HOME_PAGE_RECOMMENDED_EXTENSIONS_COUNT = 4;
 export const MOBILE_HOME_PAGE_TRENDING_EXTENSIONS_COUNT = 8;
 
-export const DOWNLOAD_FIREFOX_BASE_URL =
-  'https://www.mozilla.org/firefox/download/thanks/';
+export const DOWNLOAD_FIREFOX_BASE_URL = 'https://www.firefox.com/thanks/';
 export const PROMOTED_ADDONS_SUMO_URL =
   'https://support.mozilla.org/kb/add-on-badges';
 export const DOWNLOAD_FIREFOX_FOR_ANDROID_BASE_URL =
@@ -113,6 +112,8 @@ export const VISIBLE_ADDON_TYPES_MAPPING: {|
 
 // Incompatibility codes for clients that can't install an add-on.
 export const INCOMPATIBLE_FIREFOX_FOR_IOS = 'INCOMPATIBLE_FIREFOX_FOR_IOS';
+export const INCOMPATIBLE_OLD_ROOT_CERT_VERSION =
+  'INCOMPATIBLE_OLD_ROOT_CERT_VERSION';
 export const INCOMPATIBLE_OVER_MAX_VERSION = 'INCOMPATIBLE_OVER_MAX_VERSION';
 export const INCOMPATIBLE_NOT_FIREFOX = 'INCOMPATIBLE_NOT_FIREFOX';
 export const INCOMPATIBLE_UNDER_MIN_VERSION = 'INCOMPATIBLE_UNDER_MIN_VERSION';
@@ -122,11 +123,6 @@ export const INCOMPATIBLE_NON_RESTARTLESS_ADDON =
   'INCOMPATIBLE_NON_RESTARTLESS_ADDON';
 export const INCOMPATIBLE_ANDROID_UNSUPPORTED =
   'INCOMPATIBLE_ANDROID_UNSUPPORTED';
-
-// Tracking add-on types
-export const TRACKING_TYPE_EXTENSION = 'addon';
-export const TRACKING_TYPE_STATIC_THEME = ADDON_TYPE_STATIC_THEME;
-export const TRACKING_TYPE_INVALID = 'invalid';
 
 // Add-on install tracking sources.
 // These key values may be linked to historic analytic data.
@@ -181,6 +177,17 @@ export const FEATURED_GET = 'FEATURED_GET';
 export const FEATURED_LOADED = 'FEATURED_LOADED';
 export const SET_VIEW_CONTEXT = 'SET_VIEW_CONTEXT';
 
+// Color theme preferences. `THEME_AUTO` follows the OS via the `prefers-color-scheme` media query;
+// light/dark force a theme regardless of the OS setting.
+// See amo/reducers/theme and amo/css/theme.scss.
+export const THEME_AUTO = 'auto';
+export const THEME_LIGHT = 'light';
+export const THEME_DARK = 'dark';
+export const THEME_PREFERENCES = [THEME_AUTO, THEME_LIGHT, THEME_DARK];
+export const SET_THEME = 'SET_THEME';
+// localStorage key holding the user's color theme preference
+export const THEME_STORAGE_KEY = 'amo_theme';
+
 export const INSTALL_EVENT_LIST = [
   'onDownloadStarted',
   'onDownloadProgress',
@@ -204,41 +211,55 @@ export const INSTALL_ERROR = 'INSTALL_ERROR';
 
 // Tracking install actions.
 export const ENABLE_ACTION = 'enable';
-export const INSTALL_ACTION = 'install';
-export const INSTALL_CANCELLED_ACTION = 'install:cancelled';
-export const INSTALL_DOWNLOAD_FAILED_ACTION = 'install:download-failed';
-export const INSTALL_STARTED_ACTION = 'install:started';
+export const INSTALL_CANCELLED_ACTION = 'install_cancelled';
+export const INSTALL_DOWNLOAD_FAILED_ACTION = 'install_download_failed';
+export const INSTALL_STARTED_ACTION = 'install_started';
 export const UNINSTALL_ACTION = 'uninstall';
 
 // Tracking Event Categories.
-// WARNING: Do not change these without notifying data + metrics teams.
-// Changing these strings will break existing statistics without
-// updating the category matching at the same time.
-export const ENABLE_EXTENSION_CATEGORY = 'AMO Addon Activation';
-export const ENABLE_THEME_CATEGORY = 'AMO Theme Activation';
+// NOTE: These were migrated from UA-style names to GA4-style lowercase/underscore
+// naming convention. Data + metrics teams were notified of this intentional migration.
+export const ENABLE_EXTENSION_CATEGORY = 'amo_addon_activation';
+export const ENABLE_THEME_CATEGORY = 'amo_theme_activation';
 
-export const INSTALL_EXTENSION_CATEGORY = 'AMO Addon Installs';
-export const INSTALL_THEME_CATEGORY = 'AMO Theme Installs';
-export const INSTALL_TRUSTED_EXTENSION_CATEGORY = 'AMO Trusted Addon Installs';
+export const INSTALL_EXTENSION_CATEGORY = 'amo_addon_installs_completed';
+export const INSTALL_THEME_CATEGORY = 'amo_theme_installs_completed';
+export const INSTALL_TRUSTED_EXTENSION_CATEGORY =
+  'amo_trusted_addon_install_completed';
 
 export const INSTALL_CANCELLED_EXTENSION_CATEGORY =
-  'AMO Addon Installs Cancelled';
-export const INSTALL_CANCELLED_THEME_CATEGORY = 'AMO Theme Installs Cancelled';
+  'amo_addon_installs_cancelled';
+export const INSTALL_CANCELLED_THEME_CATEGORY = 'amo_theme_installs_cancelled';
 
 export const INSTALL_DOWNLOAD_FAILED_EXTENSION_CATEGORY =
-  'AMO Addon Installs Download Failed';
+  'amo_addon_installs_download_failed';
 export const INSTALL_DOWNLOAD_FAILED_THEME_CATEGORY =
-  'AMO Theme Installs Download Failed';
+  'amo_theme_installs_download_failed';
 
-export const INSTALL_STARTED_EXTENSION_CATEGORY = 'AMO Addon Installs Started';
-export const INSTALL_STARTED_THEME_CATEGORY = 'AMO Theme Installs Started';
+export const INSTALL_STARTED_EXTENSION_CATEGORY = 'amo_addon_installs_started';
+export const INSTALL_STARTED_THEME_CATEGORY = 'amo_theme_installs_started';
 
-export const UNINSTALL_EXTENSION_CATEGORY = 'AMO Addon Uninstalls';
-export const UNINSTALL_THEME_CATEGORY = 'AMO Theme Uninstalls';
+export const UNINSTALL_EXTENSION_CATEGORY = 'amo_addon_uninstalls';
+export const UNINSTALL_THEME_CATEGORY = 'amo_theme_uninstalls';
 
-export const CLICK_CATEGORY = 'AMO Addon / Theme Clicks';
+export const CLICK_CATEGORY = 'amo_addon_theme_clicks';
 
-export const SUGGESTIONS_CLICK_CATEGORY = 'AMO Suggested Addon Clicks';
+export const ADDON_DETAIL_PAGE_VIEW_CATEGORY = 'amo_addon_detail_page_view';
+
+export const SUGGESTIONS_CLICK_CATEGORY = 'amo_suggested_addon_clicks';
+
+export const SET_ADDON_INSTALL_SOURCE: 'SET_ADDON_INSTALL_SOURCE' =
+  'SET_ADDON_INSTALL_SOURCE';
+export const CLEAR_ADDON_INSTALL_SOURCE: 'CLEAR_ADDON_INSTALL_SOURCE' =
+  'CLEAR_ADDON_INSTALL_SOURCE';
+
+// Collection tracking event categories
+export const COLLECTION_CREATE_STARTED_CATEGORY =
+  'amo_create_collection_started';
+export const COLLECTION_CREATE_COMPLETED_CATEGORY =
+  'amo_create_collection_completed';
+export const COLLECTION_ADD_ADDON_CATEGORY = 'amo_add_to_collection';
+export const COLLECTION_REMOVE_ADDON_CATEGORY = 'amo_remove_from_collection';
 
 // Error used to know that the setEnable method on addon is
 // not available.
@@ -320,41 +341,27 @@ export const DEFAULT_UTM_SOURCE = 'addons.mozilla.org';
 export const DEFAULT_UTM_MEDIUM = 'referral';
 export const DOWNLOAD_FIREFOX_UTM_CAMPAIGN = 'amo-fx-cta';
 export const GET_FIREFOX_BANNER_UTM_CONTENT = 'banner-download-button';
+export const QR_CODE_UTM_CAMPAIGN = 'amo-fx-android-qr';
 
 // Promoted categories
 export const LINE = 'line';
 export const RECOMMENDED = 'recommended';
-export const SPONSORED = 'sponsored';
 export const SPOTLIGHT = 'spotlight';
 export const STRATEGIC = 'strategic';
-export const VERIFIED = 'verified';
 
+// This array is sorted by "importance".
 export const ALL_PROMOTED_CATEGORIES = [
-  LINE,
   RECOMMENDED,
-  SPONSORED,
+  LINE,
   SPOTLIGHT,
   STRATEGIC,
-  VERIFIED,
 ];
-export const BADGE_CATEGORIES = [LINE, RECOMMENDED, VERIFIED];
-export const EXCLUDE_WARNING_CATEGORIES = [
-  LINE,
-  RECOMMENDED,
-  SPONSORED,
-  SPOTLIGHT,
-  VERIFIED,
-];
+export const BADGE_CATEGORIES = [LINE, RECOMMENDED];
+export const EXCLUDE_WARNING_CATEGORIES = [LINE, RECOMMENDED, SPOTLIGHT];
 export const REVIEWED_FILTER = 'badged';
-export const VERIFIED_FILTER = `${SPONSORED},${VERIFIED}`;
 
 export type PromotedCategoryType =
-  | typeof LINE
-  | typeof RECOMMENDED
-  | typeof SPONSORED
-  | typeof SPOTLIGHT
-  | typeof STRATEGIC
-  | typeof VERIFIED;
+  typeof LINE | typeof RECOMMENDED | typeof SPOTLIGHT | typeof STRATEGIC;
 
 export const APP_NAME = 'amo';
 export const WEBPACK_ENTRYPOINT = APP_NAME;

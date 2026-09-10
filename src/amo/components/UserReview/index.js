@@ -60,6 +60,7 @@ function reviewBody({
         // Add an extra class if the content is an empty string.
         'UserReview-emptyBody': !content && !html,
       })}
+      noStyle
     >
       <div {...bodyAttr} />
     </ShowMoreCard>
@@ -108,8 +109,7 @@ export const UserReviewBase = (props: InternalProps): React.Node => {
   );
 };
 
-const UserReview: React.ComponentType<Props> = compose(translate())(
-  UserReviewBase,
-);
+const UserReview: React.ComponentType<Props> =
+  compose(translate())(UserReviewBase);
 
 export default UserReview;

@@ -7,6 +7,7 @@ import {
   fetchVersions,
 } from 'amo/reducers/versions';
 import {
+  ADDON_TYPE_LANG,
   ADDON_TYPE_STATIC_THEME,
   CLIENT_APP_ANDROID,
   CLIENT_APP_FIREFOX,
@@ -18,14 +19,14 @@ import {
   INCOMPATIBLE_UNDER_MIN_VERSION,
   INCOMPATIBLE_UNSUPPORTED_PLATFORM,
   INSTALLING,
+  RECOMMENDED,
   STRATEGIC,
-  VERIFIED,
 } from 'amo/constants';
 import { extractId } from 'amo/pages/AddonVersions';
 import { formatFilesize } from 'amo/i18n/utils';
 import { FETCH_ADDON, fetchAddon, loadAddon } from 'amo/reducers/addons';
 import { setInstallError, setInstallState } from 'amo/reducers/installations';
-import { getPromotedBadgesLinkUrl } from 'amo/utils';
+import { getPromotedBadgesLinkUrl } from 'amo/utils/promoted';
 import {
   correctedLocationForPlatform,
   getClientCompatibility,
@@ -536,6 +537,89 @@ describe(__filename, () => {
     ).not.toBeInTheDocument();
   });
 
+  it('displays expected headings for langpacks', () => {
+    const version1 = { ...fakeVersion, id: 1 };
+    const addon = {
+      ...fakeAddon,
+      slug: defaultSlug,
+      type: ADDON_TYPE_LANG,
+      current_version: version1,
+    };
+    const version2 = { ...fakeVersion, id: 2 };
+    const version3 = { ...fakeVersion, id: 3 };
+
+    _loadAddon(addon);
+    _loadVersions({ versions: [version1, version2, version3] });
+
+    render();
+
+    const versionCards = allVersionCards();
+
+    expect(
+      within(versionCards[0]).getByRole('heading', {
+        name: 'Versions',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(versionCards[1]).queryByRole('heading', {
+        name: 'Versions',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(versionCards[2]).queryByRole('heading', {
+        name: 'Versions',
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(document).queryByRole('heading', {
+        name: 'Latest version',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not render a robots meta tag when add-on should be indexed', async () => {
+    const name = 'some name';
+    const addon = {
+      ...fakeAddon,
+      name: {
+        'en-US': name,
+      },
+      slug: defaultSlug,
+      is_noindexed: false,
+    };
+    _loadAddon(addon);
+    _loadVersions({ versions: [] });
+    render();
+
+    // This check is needed to make sure the page is fully loaded, otherwise
+    // the assertion on the meta tag might pass even if the meta is rendered
+    // eventually.
+    const expectedHeader = `${name} version history - 0 version`;
+    await waitFor(() =>
+      expect(getElement('title')).toHaveTextContent(expectedHeader),
+    );
+    await waitFor(() =>
+      expect(getElement('meta[name="robots"]')).toBeUndefined(),
+    );
+  });
+
+  it('renders a robots meta tag when add-on is noindexed', async () => {
+    const addon = {
+      ...fakeAddon,
+      slug: defaultSlug,
+      is_noindexed: true,
+    };
+    _loadAddon(addon);
+    render();
+
+    await waitFor(() =>
+      expect(getElement('meta[name="robots"]')).toHaveAttribute(
+        'content',
+        'noindex, follow',
+      ),
+    );
+  });
+
   describe('extractId', () => {
     it('returns a unique ID provided by the slug prop and page query param', () => {
       const page = 19;
@@ -1009,7 +1093,7 @@ describe(__filename, () => {
           addon: {
             ...fakeAddon,
             slug: defaultSlug,
-            promoted: { category: VERIFIED, apps: [CLIENT_APP_FIREFOX] },
+            promoted: { category: RECOMMENDED, apps: [CLIENT_APP_FIREFOX] },
           },
         });
 

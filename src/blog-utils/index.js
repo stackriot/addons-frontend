@@ -3,7 +3,7 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { Router } from 'react-router-dom';
-import 'isomorphic-fetch';
+import { createMemoryHistory } from 'history';
 
 import I18nProvider from 'amo/i18n/Provider';
 import { makeI18n } from 'amo/i18n/utils';
@@ -12,6 +12,7 @@ import createStore from 'amo/store';
 import Footer from 'amo/components/Footer';
 import Header from 'amo/components/Header';
 import { createInternalAddon } from 'amo/reducers/addons';
+import { addQueryParamsToHistory } from 'amo/utils';
 
 import StaticAddonCard from './StaticAddonCard';
 
@@ -30,7 +31,12 @@ const render = ({ app, lang, component }: RenderParams) => {
   // object here because it's fine for en-US content.
   // $FlowIgnore: see comment above
   const i18n = makeI18n({}, lang);
-  const { connectedHistory, store } = createStore();
+  const { connectedHistory, store } = createStore({
+    history: addQueryParamsToHistory({
+      history: createMemoryHistory(),
+    }),
+    initialState: {},
+  });
 
   store.dispatch(setClientApp(app));
   store.dispatch(setLang(lang));
@@ -51,7 +57,7 @@ export const buildFooter = (): string => {
   return render({
     app,
     lang,
-    component: <Footer noLangPicker />,
+    component: <Footer noLangPicker noThemePicker />,
   });
 };
 

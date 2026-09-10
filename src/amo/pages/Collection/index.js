@@ -1,4 +1,6 @@
 /* @flow */
+/* global window */
+import config from 'config';
 import deepEqual from 'deep-eql';
 import invariant from 'invariant';
 import * as React from 'react';
@@ -11,6 +13,7 @@ import Button from 'amo/components/Button';
 import CollectionAddAddon from 'amo/components/CollectionAddAddon';
 import CollectionControls from 'amo/components/CollectionControls';
 import CollectionDetailsCard from 'amo/components/CollectionDetailsCard';
+import HeadLinks from 'amo/components/HeadLinks';
 import NotFoundPage from 'amo/pages/ErrorPages/NotFoundPage';
 import Link from 'amo/components/Link';
 import Page from 'amo/components/Page';
@@ -31,12 +34,15 @@ import { getCurrentUser } from 'amo/reducers/users';
 import AuthenticateButton from 'amo/components/AuthenticateButton';
 import Paginate from 'amo/components/Paginate';
 import {
+  COLLECTION_REMOVE_ADDON_CATEGORY,
   COLLECTION_SORT_DATE_ADDED_DESCENDING,
   INSTALL_SOURCE_COLLECTION,
 } from 'amo/constants';
 import { withFixedErrorHandler } from 'amo/errorHandler';
 import translate from 'amo/i18n/translate';
 import log from 'amo/logger';
+import tracking, { getAddonEventParams } from 'amo/tracking';
+import { getPromotedCategory } from 'amo/utils/addons';
 import { sendServerRedirect } from 'amo/reducers/redirectTo';
 import Card from 'amo/components/Card';
 import ConfirmButton from 'amo/components/ConfirmButton';
@@ -61,6 +67,8 @@ import './styles.scss';
 export const DEFAULT_ADDON_PLACEHOLDER_COUNT = 3;
 
 export type DefaultProps = {|
+  _getPromotedCategory: typeof getPromotedCategory,
+  _tracking: typeof tracking,
   creating: boolean,
   editing: boolean,
 |};
@@ -139,6 +147,8 @@ export class CollectionBase extends React.Component<InternalProps> {
   static defaultProps: {|
     ...DefaultProps,
   |} = {
+    _getPromotedCategory: getPromotedCategory,
+    _tracking: tracking,
     creating: false,
     editing: false,
   };
@@ -286,7 +296,16 @@ export class CollectionBase extends React.Component<InternalProps> {
   }
 
   removeAddon: RemoveCollectionAddonFunc = (addonId: number) => {
-    const { collection, dispatch, errorHandler, filters, history } = this.props;
+    const {
+      _getPromotedCategory,
+      _tracking,
+      clientApp,
+      collection,
+      dispatch,
+      errorHandler,
+      filters,
+      history,
+    } = this.props;
 
     invariant(collection, 'collection is required');
 
@@ -307,6 +326,21 @@ export class CollectionBase extends React.Component<InternalProps> {
       page = newCollectionPage;
       shouldPushNewRoute = true;
     }
+
+    const collectionAddon =
+      collection.addons && collection.addons.find((a) => a.id === addonId);
+    _tracking.sendEvent({
+      category: COLLECTION_REMOVE_ADDON_CATEGORY,
+      params: collectionAddon
+        ? {
+            ...getAddonEventParams(collectionAddon, window.location.pathname),
+            trusted: !!_getPromotedCategory({
+              addon: collectionAddon,
+              clientApp,
+            }),
+          }
+        : { page_path: window.location.pathname },
+    });
 
     dispatch(
       removeAddonFromCollection({
@@ -586,6 +620,13 @@ export class CollectionBase extends React.Component<InternalProps> {
               <meta name="description" content={this.getPageDescription()} />
             </Helmet>
           )}
+          {
+            /* Only include canonical/alternate links if this is a mozilla collection */
+            collection &&
+              collection.authorId === config.get('mozillaUserId') && (
+                <HeadLinks />
+              )
+          }
 
           {errorHandler.renderErrorIfPresent()}
 

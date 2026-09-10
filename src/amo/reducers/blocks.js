@@ -14,7 +14,8 @@ export type ExternalBlockType = {|
   created: string,
   guid: string,
   id: number,
-  versions: [string],
+  soft_blocked: [string],
+  blocked: [string],
   is_all_versions?: boolean,
   modified: string,
   reason: string | null,
@@ -23,7 +24,7 @@ export type ExternalBlockType = {|
 
 export type BlockType = {|
   ...ExternalBlockType,
-  name: string,
+  name: string | null,
 |};
 
 export type BlocksState = {|
@@ -105,6 +106,16 @@ export const createInternalBlock = (
     ...block,
     name: selectLocalizedContent(block.addon_name, lang),
   };
+};
+
+export const isSoftBlocked = (
+  block?: BlockType | null,
+  versionId?: string,
+): boolean => {
+  return (
+    Boolean(block?.soft_blocked.length) &&
+    (block?.soft_blocked.includes(versionId) || !block?.blocked.length)
+  );
 };
 
 type Action = FetchBlockAction | AbortFetchBlockAction | LoadBlockAction;

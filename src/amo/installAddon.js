@@ -1,4 +1,5 @@
 /* @flow */
+/* global window */
 import { oneLine } from 'common-tags';
 import invariant from 'invariant';
 import * as React from 'react';
@@ -7,8 +8,8 @@ import { connect } from 'react-redux';
 import { setInstallError, setInstallState } from 'amo/reducers/installations';
 import log from 'amo/logger';
 import tracking, {
-  getAddonTypeForTracking,
   getAddonEventCategory,
+  getAddonEventParams,
 } from 'amo/tracking';
 import {
   ADDON_TYPE_EXTENSION,
@@ -21,7 +22,6 @@ import {
   FATAL_INSTALL_ERROR,
   FATAL_UNINSTALL_ERROR,
   INSTALLING,
-  INSTALL_ACTION,
   INSTALL_CANCELLED,
   INSTALL_CANCELLED_ACTION,
   INSTALL_DOWNLOAD_FAILED_ACTION,
@@ -38,6 +38,10 @@ import * as addonManager from 'amo/addonManager';
 import { getVersionById } from 'amo/reducers/versions';
 import { getDisplayName } from 'amo/utils';
 import { getFileHash, getPromotedCategory } from 'amo/utils/addons';
+import {
+  injectUTMParams as defaultInjectUTMParams,
+  removeUTMParams as defaultRemoveUTMParams,
+} from 'amo/utils/installAttribution';
 import type { AppState } from 'amo/store';
 import type { AddonVersionType } from 'amo/reducers/versions';
 import type { AddonType } from 'amo/types/addons';
@@ -57,15 +61,18 @@ type EventType = {|
 |};
 
 type MakeProgressHandlerParams = {|
+  _removeUTMParams: typeof defaultRemoveUTMParams,
   _tracking: typeof tracking,
+  addon: AddonType,
   dispatch: DispatchFunc,
   guid: string,
-  name: string,
   type: string,
 |};
 
 export function makeProgressHandler({
+  _removeUTMParams,
   _tracking,
+  addon,
   dispatch,
   guid,
   type,
@@ -93,11 +100,11 @@ export function makeProgressHandler({
         dispatch(setInstallError({ guid, error: DOWNLOAD_FAILED }));
 
         _tracking.sendEvent({
-          action: getAddonTypeForTracking(type),
           category: getAddonEventCategory(type, INSTALL_DOWNLOAD_FAILED_ACTION),
-          label: guid,
+          params: getAddonEventParams(addon, window.location.pathname),
         });
       }
+      _removeUTMParams();
     } else if (event.type === 'onInstallCancelled') {
       dispatch({
         type: INSTALL_CANCELLED,
@@ -105,12 +112,13 @@ export function makeProgressHandler({
       });
 
       _tracking.sendEvent({
-        action: getAddonTypeForTracking(type),
         category: getAddonEventCategory(type, INSTALL_CANCELLED_ACTION),
-        label: guid,
+        params: getAddonEventParams(addon, window.location.pathname),
       });
+      _removeUTMParams();
     } else if (event.type === 'onInstallFailed') {
       dispatch(setInstallError({ guid, error: INSTALL_FAILED }));
+      _removeUTMParams();
     }
   };
 }
@@ -124,12 +132,15 @@ type WithInstallHelpersPropsFromState = {|
   WrappedComponent: React.ComponentType<any>,
   clientApp: string,
   currentVersion: AddonVersionType | null,
+  installSource: string | null,
 |};
 
 type WithInstallHelpersDefaultProps = {|
   _addonManager: typeof addonManager,
   _getPromotedCategory: typeof getPromotedCategory,
+  _injectUTMParams: typeof defaultInjectUTMParams,
   _log: typeof log,
+  _removeUTMParams: typeof defaultRemoveUTMParams,
   _tracking: typeof tracking,
 |};
 
@@ -159,7 +170,9 @@ export class WithInstallHelpers extends React.Component<WithInstallHelpersIntern
   static defaultProps: WithInstallHelpersDefaultProps = {
     _addonManager: addonManager,
     _getPromotedCategory: getPromotedCategory,
+    _injectUTMParams: defaultInjectUTMParams,
     _log: log,
+    _removeUTMParams: defaultRemoveUTMParams,
     _tracking: tracking,
   };
 
@@ -243,9 +256,8 @@ export class WithInstallHelpers extends React.Component<WithInstallHelpersIntern
       .enable(guid)
       .then(() => {
         _tracking.sendEvent({
-          action: getAddonTypeForTracking(type),
           category: getAddonEventCategory(type, ENABLE_ACTION),
-          label: guid,
+          params: getAddonEventParams(addon, window.location.pathname),
         });
       })
       .catch((err) => {
@@ -270,18 +282,21 @@ export class WithInstallHelpers extends React.Component<WithInstallHelpersIntern
     const {
       _addonManager,
       _getPromotedCategory,
+      _injectUTMParams,
       _log,
+      _removeUTMParams,
       _tracking,
       addon,
       clientApp,
       currentVersion,
       dispatch,
+      installSource,
     } = this.props;
 
     invariant(addon, 'need an addon to call install()');
     invariant(currentVersion, 'need a currentVersion to call install()');
 
-    const { guid, name, type } = addon;
+    const { guid, type } = addon;
     const { file } = currentVersion;
 
     if (!file) {
@@ -289,12 +304,20 @@ export class WithInstallHelpers extends React.Component<WithInstallHelpersIntern
       return Promise.resolve();
     }
 
+    // Inject UTM params into the page URL so Firefox can read them at
+    // install time for attribution.
+    if (installSource) {
+      _injectUTMParams(installSource);
+    }
+
     return new Promise((resolve) => {
       dispatch({ type: START_DOWNLOAD, payload: { guid } });
       _tracking.sendEvent({
-        action: getAddonTypeForTracking(type),
         category: getAddonEventCategory(type, INSTALL_STARTED_ACTION),
-        label: guid,
+        params: {
+          ...getAddonEventParams(addon, window.location.pathname),
+          trusted: !!_getPromotedCategory({ addon, clientApp }),
+        },
       });
 
       const installURL = file.url;
@@ -311,54 +334,65 @@ export class WithInstallHelpers extends React.Component<WithInstallHelpersIntern
         return _addonManager.install(
           installURL || '',
           makeProgressHandler({
+            _removeUTMParams,
             _tracking,
+            addon,
             dispatch,
             guid,
-            name,
             type,
           }),
           { hash },
         );
       })
       .then(() => {
+        const promotedCategory = _getPromotedCategory({ addon, clientApp });
         _tracking.sendEvent({
-          action: getAddonTypeForTracking(type),
-          category: getAddonEventCategory(type, INSTALL_ACTION),
-          label: guid,
+          category: getAddonEventCategory(type),
+          params: {
+            ...getAddonEventParams(addon, window.location.pathname),
+            trusted: !!promotedCategory,
+          },
         });
 
         // If the add-on is trusted, send an additional event for trusted
         // add-on install.
-        const promotedCategory = _getPromotedCategory({ addon, clientApp });
         if (addon.type === ADDON_TYPE_EXTENSION && promotedCategory) {
           _tracking.sendEvent({
-            action: promotedCategory,
             category: INSTALL_TRUSTED_EXTENSION_CATEGORY,
-            label: guid,
+            params: {
+              ...getAddonEventParams(addon, window.location.pathname),
+              trusted: true,
+            },
           });
         }
+
+        // Clean up UTM params injected before install. This is called on
+        // every exit path (success, failure, cancel) to ensure the URL is
+        // always restored. removeUTMParams() is idempotent.
+        _removeUTMParams();
       })
       .catch((error) => {
         _log.error(`Install error: ${error}`);
 
+        _removeUTMParams();
         dispatch(setInstallError({ guid, error: FATAL_INSTALL_ERROR }));
       });
   }
 
   uninstall({ guid, type }: UninstallParams): Promise<void> {
-    const { _addonManager, _log, _tracking, dispatch } = this.props;
+    const { _addonManager, _log, _tracking, addon, dispatch } = this.props;
 
     dispatch(setInstallState({ guid, status: UNINSTALLING }));
 
-    const action = getAddonTypeForTracking(type);
     return _addonManager
       .uninstall(guid)
       .then(() => {
-        _tracking.sendEvent({
-          action,
-          category: getAddonEventCategory(type, UNINSTALL_ACTION),
-          label: guid,
-        });
+        if (addon) {
+          _tracking.sendEvent({
+            category: getAddonEventCategory(type, UNINSTALL_ACTION),
+            params: getAddonEventParams(addon, window.location.pathname),
+          });
+        }
       })
       .catch((error) => {
         _log.error(`Uninstall error: ${error}`);
@@ -415,6 +449,7 @@ export const withInstallHelpers = (
       WrappedComponent,
       clientApp: state.api.clientApp,
       currentVersion,
+      installSource: state.addonInstallSource.installSource,
     };
   };
 

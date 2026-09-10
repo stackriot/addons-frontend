@@ -1,4 +1,4 @@
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 
 import { buildFooter, buildHeader, buildStaticAddonCard } from 'blog-utils';
 import { fakeAddon } from 'tests/unit/helpers';
@@ -9,7 +9,7 @@ describe(__filename, () => {
       const html = cheerio.load(buildFooter());
 
       expect(html('.Footer')).toHaveLength(1);
-      expect(html('.Footer-language-picker')).toHaveLength(0);
+      expect(html('.LanguagePicker')).toHaveLength(0);
 
       const blogLink = html('.Footer-blog-link');
       expect(blogLink).toHaveLength(1);
@@ -50,7 +50,6 @@ describe(__filename, () => {
       expect(html('.StaticAddonCard')).toHaveLength(1);
       expect(html('.GetFirefoxButton')).toHaveLength(1);
       expect(html('.GetFirefoxButton-button')).toHaveLength(1);
-      expect(html('.GetFirefoxButton-callout')).toHaveLength(1);
     });
 
     it('lets the caller catch and handle errors', async () => {

@@ -1,5 +1,7 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
-.RatingManagerNotice-savedRating.RatingManagerNotice-savedRating-hidden {
-  display: none;
+.RatingManagerNotice-savedRating {
+  &.RatingManagerNotice-savedRating-hidden {
+    display: none;
+  }
 }

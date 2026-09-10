@@ -104,7 +104,7 @@ describe(__filename, () => {
     describe('when clientApp is CLIENT_APP_ANDROID', () => {
       it('does not set promoted and does not override compatibleWithVersion when browser is Firefox for Android', () => {
         const { state } = dispatchClientMetadata({
-          userAgent: userAgentsByPlatform.android.firefox70,
+          userAgent: userAgentsByPlatform.android.firefox136,
         });
 
         const newFilters = addVersionCompatibilityToFilters({
@@ -115,14 +115,14 @@ describe(__filename, () => {
         expect(newFilters).toEqual({
           addonType: ADDON_TYPE_EXTENSION,
           clientApp: CLIENT_APP_ANDROID,
-          compatibleWithVersion: '70.0',
+          compatibleWithVersion: '136.0',
           query: 'foo',
         });
       });
 
       it.each([
         // This works because it is Firefox Desktop.
-        userAgentsByPlatform.windows.firefox40,
+        userAgentsByPlatform.windows.firefox115,
         userAgentsByPlatform.mac.chrome41,
       ])(
         'does not set promoted but overrides compatibleWithVersion when browser is not Firefox for Android - userAgent: %s',
@@ -261,7 +261,9 @@ describe(__filename, () => {
 
   describe('paramsToFilter', () => {
     it('generates all the required threshold parameters for ratings and users', () => {
+      expect(paramsToFilter).toMatchObject({ created__gte: 'created__gte' });
       expect(paramsToFilter).toMatchObject({ ratings__gt: 'ratings__gt' });
+      expect(paramsToFilter).toMatchObject({ updated__lt: 'updated__lt' });
       expect(paramsToFilter).toMatchObject({ users__lte: 'users__lte' });
       expect(paramsToFilter).toMatchObject({ users: 'users' });
     });

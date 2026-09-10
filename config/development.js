@@ -2,9 +2,10 @@
 import {
   apiDevHost,
   baseUrlDev,
-  ga4AdditionalAnalyticsHost,
-  ga4AnalyticsHost,
-  ga4TagManagerHost,
+  devLangs,
+  gtmAdditionalAnalyticsHost,
+  gtmAnalyticsHost,
+  gtmHost,
 } from './lib/shared';
 
 const webpackServerHost = process.env.WEBPACK_SERVER_HOST || '127.0.0.1';
@@ -21,7 +22,7 @@ module.exports = {
   proxyEnabled: true,
 
   fxaConfig: 'local',
-  trackingEnabled: false,
+  trackingEnabled: true,
   loggingLevel: 'debug',
 
   isDeployed: false,
@@ -39,7 +40,7 @@ module.exports = {
   webpackServerPort,
 
   // In local dev, we serve static files using webpack-dev-server.
-  // We need to remove the protocol because of `yarn amo:dev-https`.
+  // We need to remove the protocol because of `npm run amo:dev-https`.
   staticPath: `//${webpackDevServer}/`,
 
   CSP: {
@@ -52,9 +53,9 @@ module.exports = {
         webpackDevServer,
         // This is needed for pino-devtools.
         `${webpackServerHost}:3010`,
-        ga4AnalyticsHost,
-        ga4AdditionalAnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmAdditionalAnalyticsHost,
+        gtmHost,
       ],
       fontSrc: [
         webpackDevServer,
@@ -64,8 +65,8 @@ module.exports = {
         'data:',
         baseUrlDev,
         webpackDevServer,
-        ga4AnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmHost,
       ],
       scriptSrc: [
         "'self'",
@@ -73,8 +74,8 @@ module.exports = {
         "'unsafe-inline'",
         baseUrlDev,
         webpackDevServer,
-        ga4AnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmHost,
       ],
       styleSrc: [
         "'self'",
@@ -85,7 +86,7 @@ module.exports = {
     reportOnly: true,
   },
 
-  ga4DebugMode: true,
-
   extensionWorkshopUrl: 'https://extensionworkshop.allizom.org',
+
+  langs: devLangs,
 };

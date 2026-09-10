@@ -1,4 +1,4 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 $font-size-aside: $font-size-xs;
 
@@ -16,11 +16,10 @@ $font-size-aside: $font-size-xs;
   display: none;
 
   @include respond-to(large) {
-    @include margin-end($padding-page);
-
     display: block;
     min-width: 300px;
     width: 35%;
+    @include margin-end($padding-page);
 
     ul {
       padding: 0;
@@ -47,7 +46,7 @@ $font-size-aside: $font-size-xs;
 
 .UserProfileEdit-notifications-aside,
 .UserProfileEdit-profile-aside {
-  color: $grey-50;
+  color: var(--sub-text-color);
   font-size: $font-size-aside;
   margin-top: 0;
 
@@ -71,7 +70,7 @@ $font-size-aside: $font-size-xs;
 .UserProfileEdit-email--help,
 .UserProfileEdit-homepage--help,
 .UserProfileEdit-notifications--help {
-  color: $grey-50;
+  color: var(--sub-text-color);
   display: block;
   font-size: $font-size-aside;
   margin-top: 4px;
@@ -88,7 +87,7 @@ $font-size-aside: $font-size-xs;
   width: 100%;
 
   &:disabled {
-    background: $grey-20;
+    background: var(--background-grey);
     cursor: not-allowed;
   }
 
@@ -137,7 +136,7 @@ $font-size-aside: $font-size-xs;
   max-width: 500px;
 
   .Card-contents {
-    background: $base-color;
+    background: var(--base-color);
     font-size: $font-size-default;
 
     p {

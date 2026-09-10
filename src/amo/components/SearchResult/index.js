@@ -7,19 +7,17 @@ import { compose } from 'redux';
 
 import Link from 'amo/components/Link';
 import { getAddonURL, nl2br, sanitizeHTML } from 'amo/utils';
-import {
-  ADDON_TYPE_STATIC_THEME,
-  DEFAULT_UTM_SOURCE,
-  DEFAULT_UTM_MEDIUM,
-} from 'amo/constants';
+import { getPromotedProps } from 'amo/utils/promoted';
+import { ADDON_TYPE_STATIC_THEME } from 'amo/constants';
 import translate from 'amo/i18n/translate';
 import { getAddonIconUrl, getPreviewImage } from 'amo/imageUtils';
+import { isRecentAddon } from 'amo/reducers/addons';
+import { setAddonInstallSource } from 'amo/reducers/addonInstallSource';
 import { getPromotedCategory } from 'amo/utils/addons';
-import { addQueryParams } from 'amo/utils/url';
 import Icon from 'amo/components/Icon';
 import LoadingText from 'amo/components/LoadingText';
 import Rating from 'amo/components/Rating';
-import PromotedBadge from 'amo/components/PromotedBadge';
+import Badge from 'amo/components/Badge';
 import type { AppState } from 'amo/store';
 import type { AddonType, CollectionAddonType } from 'amo/types/addons';
 import type { ElementEvent, HTMLElementEventHandler } from 'amo/types/dom';
@@ -53,6 +51,7 @@ type InternalProps = {|
   ...Props,
   ...PropsFromState,
   _getPromotedCategory: typeof getPromotedCategory,
+  dispatch: (action: Object) => void,
   history: ReactRouterHistoryType,
   i18n: I18nType,
 |};
@@ -70,25 +69,19 @@ export class SearchResultBase extends React.Component<InternalProps> {
     useThemePlaceholder: false,
   };
 
-  getAddonLink(
-    addon: AddonType | CollectionAddonType,
-    addonInstallSource?: string,
-  ): string {
-    let linkTo = getAddonURL(addon.slug);
-
-    if (addonInstallSource) {
-      linkTo = addQueryParams(linkTo, {
-        utm_source: DEFAULT_UTM_SOURCE,
-        utm_medium: DEFAULT_UTM_MEDIUM,
-        utm_content: addonInstallSource,
-      });
-    }
-
-    return linkTo;
+  // Returns a clean addon URL without UTM params. The install source is
+  // dispatched to Redux on click (see onClickResult) and injected into the
+  // page URL at install time instead. See utils/installAttribution.js.
+  getAddonLink(addon: AddonType | CollectionAddonType): string {
+    return getAddonURL(addon.slug);
   }
 
   onClickAddon: HTMLElementEventHandler = (e: ElementEvent) => {
-    const { addon, onClick } = this.props;
+    const { addon, addonInstallSource, dispatch, onClick } = this.props;
+
+    if (addon && addonInstallSource) {
+      dispatch(setAddonInstallSource(addonInstallSource));
+    }
 
     e.stopPropagation();
     if (addon && onClick) {
@@ -96,17 +89,41 @@ export class SearchResultBase extends React.Component<InternalProps> {
     }
   };
 
+  renderPromotedBadge(): React.Node {
+    const { _getPromotedCategory, addon, clientApp, i18n, showPromotedBadge } =
+      this.props;
+
+    if (!showPromotedBadge) return null;
+
+    const promotedCategory = _getPromotedCategory({
+      addon,
+      clientApp,
+      forBadging: true,
+    });
+
+    if (!promotedCategory) return null;
+
+    const props = getPromotedProps(i18n, promotedCategory);
+
+    return (
+      <Badge
+        href={props.linkUrl}
+        title={props.linkTitle}
+        type={props.category}
+        label={props.label}
+        size="small"
+        onClick={(e) => e.stopPropagation()}
+      />
+    );
+  }
+
   renderResult(): React.Node {
     const {
-      _getPromotedCategory,
       addon,
-      addonInstallSource,
-      clientApp,
       i18n,
       onImpression,
       showFullSizePreview,
       showMetadata,
-      showPromotedBadge,
       showSummary,
       useThemePlaceholder,
     } = this.props;
@@ -127,7 +144,7 @@ export class SearchResultBase extends React.Component<InternalProps> {
       addonTitle = (
         <Link
           className="SearchResult-link"
-          to={this.getAddonLink(addon, addonInstallSource)}
+          to={this.getAddonLink(addon)}
           onClick={this.onClickAddon}
         >
           {addon.name}
@@ -160,23 +177,11 @@ export class SearchResultBase extends React.Component<InternalProps> {
       );
     }
 
-    let summary = null;
-    if (showSummary) {
-      const summaryProps = {};
-      if (addon) {
-        summaryProps.dangerouslySetInnerHTML = sanitizeHTML(addon.summary);
-      } else {
-        summaryProps.children = <LoadingText />;
-      }
-
-      summary = <p className="SearchResult-summary" {...summaryProps} />;
-    }
-
-    const promotedCategory = _getPromotedCategory({
-      addon,
-      clientApp,
-      forBadging: true,
-    });
+    const summary = (
+      <p className="SearchResult-summary">
+        {addon ? addon.summary : <LoadingText />}
+      </p>
+    );
 
     return (
       <div className="SearchResult-wrapper">
@@ -200,15 +205,9 @@ export class SearchResultBase extends React.Component<InternalProps> {
           <div className="SearchResult-contents">
             <h2 className="SearchResult-name">
               {addonTitle}
-              {showPromotedBadge && addon && promotedCategory ? (
-                <PromotedBadge
-                  category={promotedCategory}
-                  onClick={(e) => e.stopPropagation()}
-                  size="small"
-                />
-              ) : null}
+              {this.renderPromotedBadge()}
             </h2>
-            {summary}
+            {showSummary ? summary : null}
 
             {showMetadata ? (
               <div className="SearchResult-metadata">
@@ -240,36 +239,51 @@ export class SearchResultBase extends React.Component<InternalProps> {
             )}
           </div>
 
-          <h3 className="SearchResult-users SearchResult--meta-section">
-            <Icon className="SearchResult-users-icon" name="user-fill" />
-            <span className="SearchResult-users-text">
-              {averageDailyUsers !== null && averageDailyUsers !== undefined ? (
-                i18n.sprintf(
-                  i18n.ngettext(
-                    '%(total)s user',
-                    '%(total)s users',
-                    averageDailyUsers,
-                  ),
-                  { total: i18n.formatNumber(averageDailyUsers) },
-                )
-              ) : (
-                <LoadingText width={80} />
-              )}
-            </span>
-          </h3>
+          {!isRecentAddon(addon) && (
+            <h3 className="SearchResult-users SearchResult--meta-section">
+              <Icon className="SearchResult-users-icon" name="user-fill" />
+              <span className="SearchResult-users-text">
+                {averageDailyUsers !== null &&
+                averageDailyUsers !== undefined ? (
+                  i18n.sprintf(
+                    i18n.ngettext(
+                      '%(total)s user',
+                      '%(total)s users',
+                      averageDailyUsers,
+                    ),
+                    { total: i18n.formatNumber(averageDailyUsers) },
+                  )
+                ) : (
+                  <LoadingText width={80} />
+                )}
+              </span>
+            </h3>
+          )}
         </div>
       </div>
     );
   }
 
   onClickResult: () => void = () => {
-    const { addon, addonInstallSource, clientApp, history, lang, onClick } =
-      this.props;
+    const {
+      addon,
+      addonInstallSource,
+      clientApp,
+      dispatch,
+      history,
+      lang,
+      onClick,
+    } = this.props;
 
     if (addon) {
-      history.push(
-        `/${lang}/${clientApp}${this.getAddonLink(addon, addonInstallSource)}`,
-      );
+      // Store the install source in Redux so it survives navigation to the
+      // addon detail page. It will be used at install time to inject UTM
+      // params into the URL for Firefox attribution.
+      if (addonInstallSource) {
+        dispatch(setAddonInstallSource(addonInstallSource));
+      }
+
+      history.push(`/${lang}/${clientApp}${this.getAddonLink(addon)}`);
 
       if (onClick) {
         onClick(addon);

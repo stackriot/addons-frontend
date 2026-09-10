@@ -1,4 +1,4 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 /* stylelint-disable selector-class-pattern */
 
@@ -23,8 +23,7 @@ $screenshot-width: 320px;
   height: $screenshot-height;
   list-style-type: none;
   margin: 0;
-  overflow-x: scroll;
-  overflow-y: hidden;
+  overflow: auto hidden;
   padding: 0;
   width: auto;
 }

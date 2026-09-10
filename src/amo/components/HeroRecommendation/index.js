@@ -1,4 +1,5 @@
 /* @flow */
+/* global window */
 import makeClassName from 'classnames';
 import invariant from 'invariant';
 import * as React from 'react';
@@ -8,12 +9,8 @@ import { compose } from 'redux';
 import AppBanner from 'amo/components/AppBanner';
 import Link from 'amo/components/Link';
 import WrongPlatformWarning from 'amo/components/WrongPlatformWarning';
-import {
-  checkInternalURL,
-  getAddonURL,
-  getPromotedBadgesLinkUrl,
-  sanitizeUserHTML,
-} from 'amo/utils';
+import { checkInternalURL, getAddonURL, sanitizeUserHTML } from 'amo/utils';
+import { getPromotedBadgesLinkUrl } from 'amo/utils/promoted';
 import {
   DEFAULT_UTM_SOURCE,
   DEFAULT_UTM_MEDIUM,
@@ -22,7 +19,8 @@ import {
 } from 'amo/constants';
 import translate from 'amo/i18n/translate';
 import log from 'amo/logger';
-import tracking from 'amo/tracking';
+import { setAddonInstallSource } from 'amo/reducers/addonInstallSource';
+import tracking, { getAddonEventParams } from 'amo/tracking';
 import { getPromotedCategory } from 'amo/utils/addons';
 import { addQueryParams } from 'amo/utils/url';
 import LoadingText from 'amo/components/LoadingText';
@@ -33,11 +31,8 @@ import type { I18nType } from 'amo/types/i18n';
 
 import './styles.scss';
 
-export const PRIMARY_HERO_CLICK_ACTION = 'primary-hero-click';
-export const PRIMARY_HERO_CLICK_CATEGORY = 'AMO Primary Hero Clicks';
-export const PRIMARY_HERO_EXTERNAL_LABEL = 'external-link';
-export const PRIMARY_HERO_IMPRESSION_ACTION = 'primary-hero-impression';
-export const PRIMARY_HERO_IMPRESSION_CATEGORY = 'AMO Primary Hero Impressions';
+export const PRIMARY_HERO_CLICK_CATEGORY = 'amo_primary_hero_clicks';
+export const PRIMARY_HERO_IMPRESSION_CATEGORY = 'amo_primary_hero_impressions';
 export const PRIMARY_HERO_SRC = 'homepage-primary-hero';
 
 type Props = {|
@@ -61,6 +56,7 @@ export type InternalProps = {|
   ...Props,
   ...PropsFromState,
   ...DefaultProps,
+  dispatch: (action: Object) => void,
   i18n: I18nType,
 |};
 
@@ -78,14 +74,14 @@ export class HeroRecommendationBase extends React.Component<InternalProps> {
     const { addon, external } = shelfData;
 
     if (addon) {
-      return addQueryParams(getAddonURL(addon.slug), {
-        utm_source: DEFAULT_UTM_SOURCE,
-        utm_medium: DEFAULT_UTM_MEDIUM,
-        utm_content: PRIMARY_HERO_SRC,
-      });
+      // Internal addon link: clean URL without UTM params. The install source
+      // is dispatched to Redux in onHeroClick() and injected into the page URL
+      // at install time. See utils/installAttribution.js.
+      return getAddonURL(addon.slug);
     }
 
     invariant(external, 'Either an addon or an external is required');
+    // External link: keep UTM params (these go to third-party sites).
     return external.homepage
       ? addQueryParams(external.homepage.url, {
           utm_source: DEFAULT_UTM_SOURCE,
@@ -96,30 +92,45 @@ export class HeroRecommendationBase extends React.Component<InternalProps> {
   };
 
   onHeroClick: () => void = () => {
-    const { _tracking, shelfData } = this.props;
+    const { _tracking, _getPromotedCategory, clientApp, dispatch, shelfData } =
+      this.props;
 
     invariant(shelfData, 'The shelfData property is required');
 
     const { addon } = shelfData;
 
+    // Store install source in Redux for install-time UTM injection.
+    if (addon) {
+      dispatch(setAddonInstallSource(PRIMARY_HERO_SRC));
+    }
+
     _tracking.sendEvent({
-      action: PRIMARY_HERO_CLICK_ACTION,
       category: PRIMARY_HERO_CLICK_CATEGORY,
-      label: addon ? addon.guid : PRIMARY_HERO_EXTERNAL_LABEL,
+      params: addon
+        ? {
+            ...getAddonEventParams(addon, window.location.pathname),
+            trusted: !!_getPromotedCategory({ addon, clientApp }),
+          }
+        : { page_path: window.location.pathname },
     });
   };
 
   onHeroImpression: () => void = () => {
-    const { _tracking, shelfData } = this.props;
+    const { _tracking, _getPromotedCategory, clientApp, shelfData } =
+      this.props;
 
     invariant(shelfData, 'The shelfData property is required');
 
     const { addon } = shelfData;
 
     _tracking.sendEvent({
-      action: PRIMARY_HERO_IMPRESSION_ACTION,
       category: PRIMARY_HERO_IMPRESSION_CATEGORY,
-      label: addon ? addon.guid : PRIMARY_HERO_EXTERNAL_LABEL,
+      params: addon
+        ? {
+            ...getAddonEventParams(addon, window.location.pathname),
+            trusted: !!_getPromotedCategory({ addon, clientApp }),
+          }
+        : { page_path: window.location.pathname },
     });
   };
 
@@ -233,7 +244,7 @@ export class HeroRecommendationBase extends React.Component<InternalProps> {
           // L10n: If uppercase does not work in your locale, change it to lowercase. This is used as a secondary heading.
           titleText = i18n.gettext('BY FIREFOX');
         } else {
-          titleText = i18n.gettext('SPONSORED');
+          titleText = i18n.gettext('PROMOTED');
         }
       }
 

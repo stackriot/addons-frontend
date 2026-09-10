@@ -1,40 +1,122 @@
 /* @flow */
 import * as React from 'react';
+import makeClassName from 'classnames';
 
 import Icon from 'amo/components/Icon';
+import Link from 'amo/components/Link';
+import type { PromotedBadgeCategory } from 'amo/utils/promoted';
 
 import './styles.scss';
 
-export type Props = {|
+type BadgeSize = 'large' | 'small';
+
+export type BadgeType =
+  | 'experimental-badge'
+  | 'requires-payment'
+  | 'android'
+  | 'rating'
+  | 'user-fill'
+  | 'star-full'
+  | PromotedBadgeCategory;
+
+/* eslint-disable react/no-unused-prop-types */
+// We can disable this to enable conveniently spreading props to child components.
+type BadgeRenderProps = {|
+  href?: string,
   label: string,
-  type?: 'experimental' | 'requires-payment' | 'android-compatible',
+  onClick?: Function | null,
+  size: BadgeSize,
+  title?: string,
+  to?: string,
+  type: BadgeType,
 |};
+/* eslint-enable react/no-unused-prop-types */
 
-const getIconNameForType = (type) => {
-  switch (type) {
-    case 'experimental':
-      return 'experimental-badge';
-    case 'android-compatible':
-      return 'android';
-    default:
-  }
+export const BadgeIcon = ({
+  type,
+  label,
+  size,
+  className,
+}: {|
+  ...BadgeRenderProps,
+  className?: string,
+|}): React.Node => (
+  <Icon
+    name={type}
+    alt={label}
+    className={makeClassName('Badge-icon', `Badge-icon--${size}`, className)}
+  />
+);
 
-  return type;
+export const BadgeContent = ({ label, size }: BadgeRenderProps): React.Node => {
+  return (
+    <span className={makeClassName('Badge-content', `Badge-content--${size}`)}>
+      {label}
+    </span>
+  );
 };
 
-const Badge = ({ label, type }: Props): React.Node => {
-  if (
-    type &&
-    !['experimental', 'requires-payment', 'android-compatible'].includes(type)
-  ) {
-    throw new Error(`Invalid badge type given: "${type}"`);
-  }
+export const BadgePill = ({
+  children,
+  className,
+  href,
+  onClick,
+  title,
+  to,
+  type,
+}: {|
+  ...BadgeRenderProps,
+  children: React.Node,
+  className?: string,
+|}): React.Node => {
+  const hasLink = href || to;
 
   return (
-    <div className={type ? `Badge Badge-${type}` : 'Badge'}>
-      {type && <Icon alt={label} name={getIconNameForType(type)} />}
-      {label}
+    <div
+      className={makeClassName(
+        'Badge',
+        {
+          'Badge--has-link': hasLink,
+        },
+        className,
+      )}
+      data-testid={`badge-${type}`}
+    >
+      {hasLink ? (
+        <Link
+          className="Badge-link"
+          href={href}
+          onClick={onClick}
+          prependClientApp={!href}
+          prependLang={!href}
+          target={href ? '_blank' : undefined}
+          title={title}
+          to={to}
+        >
+          {children}
+        </Link>
+      ) : (
+        children
+      )}
     </div>
+  );
+};
+
+const Badge = ({
+  children,
+  ...props
+}: {|
+  ...BadgeRenderProps,
+  children?: (props: BadgeRenderProps) => React.Node,
+|}): React.Node => {
+  if (typeof children === 'function') {
+    return children(props);
+  }
+  return (
+    <BadgePill {...props}>
+      <BadgeIcon {...props} />
+      <BadgeContent {...props} />
+    </BadgePill>
   );
 };
 

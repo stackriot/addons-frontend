@@ -1,4 +1,4 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 $micro-font-size: $font-size-xs;
 
@@ -25,15 +25,16 @@ $micro-font-size: $font-size-xs;
   margin: 0;
   padding: 0 8px;
   text-decoration: none;
-  transition-duration: all $transition-long, padding $transition-short;
+  transition-duration:
+    all $transition-long,
+    padding $transition-short;
   transition-property: background-color border-color color;
   transition-timing-function: $easing-curve;
 
   .Icon {
-    @include margin-end(6px);
-
     height: $font-size-default;
     width: $font-size-default;
+    @include margin-end(6px);
   }
 
   // We frustratingly target :link directly so we need this override.
@@ -51,14 +52,19 @@ $micro-font-size: $font-size-xs;
       padding: 0 16px;
 
       .Icon {
-        @include margin-end(8px);
-
         height: $font-size-default;
         width: $font-size-default;
+        @include margin-end(8px);
       }
     }
 
     &.Button--micro {
+      // Small text is difficult to read against the bright Photon colors
+      // since it is blurry. This isn't (yet) part of the spec but added this
+      // because it improves accessibility. See:
+      // https://github.com/FirefoxUX/photon/issues/264#issuecomment-364927535
+      letter-spacing: 0.01rem;
+
       &,
       &:link {
         font-size: $micro-font-size;
@@ -67,21 +73,14 @@ $micro-font-size: $font-size-xs;
       }
 
       .Icon {
-        @include margin-end(4px);
-
         height: $micro-font-size;
         width: $micro-font-size;
+        @include margin-end(4px);
       }
 
       &:active:not(.Button--disabled) {
         padding-top: 1px;
       }
-
-      // Small text is difficult to read against the bright Photon colors
-      // since it is blurry. This isn't (yet) part of the spec but added this
-      // because it improves accessibility. See:
-      // https://github.com/FirefoxUX/photon/issues/264#issuecomment-364927535
-      letter-spacing: 0.01rem;
     }
   }
 
@@ -126,19 +125,19 @@ $micro-font-size: $font-size-xs;
 
 .Button--neutral {
   @include button(
-    $background: transparentize($grey-90, 0.9),
-    $background-active: transparentize($grey-90, 0.7),
-    $background-hover: transparentize($grey-90, 0.8),
-    $color: $grey-90
+    $background: var(--neutral-button-bg),
+    $background-active: var(--neutral-button-bg-active),
+    $background-hover: var(--neutral-button-bg-hover),
+    $color: var(--text-color-default)
   );
 }
 
 .Button--light {
   @include button(
-    $background: $white,
-    $background-active: $grey-10,
-    $background-hover: $grey-20,
-    $color: $black
+    $background: var(--light-base-color),
+    $background-active: var(--light-active-color),
+    $background-hover: var(--light-hover-color),
+    $color: var(--text-color-default)
   );
 }
 
@@ -179,6 +178,6 @@ $micro-font-size: $font-size-xs;
     $background: transparent,
     $background-active: transparent,
     $background-hover: transparent,
-    $color: $black
+    $color: var(--text-color-default)
   );
 }

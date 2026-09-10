@@ -1,11 +1,16 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .LandingPage {
   @include page-padding;
+
+  & > .LandingAddonsCard:last-child {
+    // The last `.CardList` doesn't need a `margin-bottom`.
+    margin-bottom: 0;
+  }
 }
 
 .LandingPage-header {
-  background-color: $white;
+  background-color: var(--base-color);
   border-radius: $border-radius-default;
   margin-bottom: 12px;
   padding: 24px;

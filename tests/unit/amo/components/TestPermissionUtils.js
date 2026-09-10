@@ -25,8 +25,14 @@ describe(__filename, () => {
       };
 
       expect(_getCurrentPermissions({ file })).toEqual({
-        optional: optionalPermissions,
-        required: permissions,
+        permissions: {
+          optional: optionalPermissions,
+          required: permissions,
+        },
+        data_collection_permissions: {
+          optional: [],
+          required: [],
+        },
       });
     });
 
@@ -42,16 +48,51 @@ describe(__filename, () => {
       };
 
       expect(_getCurrentPermissions({ file })).toEqual({
-        optional: [...optionalPermissions, ...hostPermissions],
-        required: permissions,
+        permissions: {
+          optional: [...optionalPermissions, ...hostPermissions],
+          required: permissions,
+        },
+        data_collection_permissions: {
+          optional: [],
+          required: [],
+        },
+      });
+    });
+
+    it('returns data_collection_permissions from file', () => {
+      const optionalDataCollectionPermissions = ['authenticationInfo'];
+      const requiredDataCollectionPermissions = ['searchTerms'];
+
+      const file = {
+        permissions: [],
+        optional_permissions: [],
+        optional_data_collection_permissions: optionalDataCollectionPermissions,
+        data_collection_permissions: requiredDataCollectionPermissions,
+      };
+
+      expect(_getCurrentPermissions({ file })).toEqual({
+        permissions: {
+          optional: [],
+          required: [],
+        },
+        data_collection_permissions: {
+          optional: optionalDataCollectionPermissions,
+          required: requiredDataCollectionPermissions,
+        },
       });
     });
 
     it('returns empty arrays if no file was found', () => {
       const file = null;
       expect(_getCurrentPermissions({ file })).toEqual({
-        optional: [],
-        required: [],
+        permissions: {
+          optional: [],
+          required: [],
+        },
+        data_collection_permissions: {
+          optional: [],
+          required: [],
+        },
       });
     });
   });
@@ -88,11 +129,6 @@ describe(__filename, () => {
   });
 
   describe('formatPermissions', () => {
-    const expectPermission = (permission, type, description) => {
-      expect(permission.props.type).toEqual(type);
-      expect(permission.props.description).toEqual(description);
-    };
-
     it('returns all permissions in the expected order', () => {
       const hostPermissionA = '*://developer.mozilla.org/*';
       const hostPermissionB = '*://*.mozilla.com/*';
@@ -108,19 +144,33 @@ describe(__filename, () => {
       expect(result).toHaveLength(4);
 
       // Native messaging next.
-      expectPermission(
-        result[0],
-        'nativeMessaging',
+      expect(result[0].props.description).toEqual(
         'Exchange messages with programs other than Firefox',
       );
       // Named permissions in alphabetical order.
-      expectPermission(result[1], 'bookmarks', 'Read and modify bookmarks');
-      expectPermission(result[2], 'tabs', 'Access browser tabs');
+      expect(result[1].props.description).toEqual('Read and modify bookmarks');
+      expect(result[2].props.description).toEqual('Access browser tabs');
       // HostPermissions component.
       expect(result[3].props.permissions).toEqual([
         hostPermissionA,
         hostPermissionB,
       ]);
+    });
+
+    it('formats data collection permission strings', () => {
+      const testPermissions = [
+        'technicalAndInteraction',
+        'personallyIdentifyingInfo',
+        'foobar',
+      ];
+      const result = permissionUtils.formatPermissions(testPermissions);
+      expect(result).toHaveLength(2);
+      expect(result[0].props.description).toEqual(
+        'Personally identifying information',
+      );
+      expect(result[1].props.description).toEqual(
+        'Technical and interaction data',
+      );
     });
   });
 });

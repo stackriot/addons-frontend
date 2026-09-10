@@ -1,4 +1,4 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .AddonsByAuthorsCard {
   margin-top: 0;
@@ -38,22 +38,23 @@
 
     @include respond-to(large) {
       .Card-contents .AddonsCard-list {
-        background-color: $white;
+        background-color: var(--base-color);
         display: grid;
         grid-auto-flow: initial;
-        grid-gap: 6px;
+        gap: 6px;
         grid-template-columns: repeat(2, minmax(50%, 1fr));
       }
     }
   }
 
-  // Override the wide window styles from SearchResult because
-  // the AddonsByAuthorsCard panel always has a short width.
-  .SearchResult-name {
-    flex-direction: column;
-
-    .PromotedBadge {
-      margin: 0 0 6px;
+  // Override the wide window styles from SearchResult because the
+  // AddonsByAuthorsCard panel in the "More add-ons" card always has
+  // a short width.
+  &.Addon-MoreAddonsCard {
+    .SearchResult-name {
+      .Badge {
+        margin: 0 0 6px;
+      }
     }
   }
 }
@@ -61,11 +62,11 @@
 .AddonsByAuthorsCard:not(.AddonsByAuthorsCard--theme) {
   .Card-contents .AddonsCard-list {
     @include respond-to(large) {
-      grid-template-columns: repeat(1, 1fr);
+      grid-template-columns: repeat(2, 1fr);
     }
 
-    @include respond-to(extraExtraLarge) {
-      grid-template-columns: repeat(2, 1fr);
+    @include respond-to(extraLarge) {
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 }

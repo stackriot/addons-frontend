@@ -3,6 +3,7 @@ import * as React from 'react';
 import { createApiError } from 'amo/api';
 import AddonMoreInfo from 'amo/components/AddonMoreInfo';
 import { ErrorHandler } from 'amo/errorHandler';
+import { loadAddonAbuseReport } from 'amo/reducers/abuse';
 import { setClientApp } from 'amo/reducers/api';
 import { loadCategories } from 'amo/reducers/categories';
 import { loadVersions } from 'amo/reducers/versions';
@@ -18,6 +19,7 @@ import {
 } from 'amo/constants';
 import { formatFilesize } from 'amo/i18n/utils';
 import {
+  createFakeAddonAbuseReport,
   createInternalAddonWithLang,
   createLocalizedString,
   createStubErrorHandler,
@@ -76,6 +78,11 @@ describe(__filename, () => {
     ).not.toBeInTheDocument();
   });
 
+  it('does not render Admin Links when addon is null', () => {
+    render({ addon: null });
+    expect(screen.queryByText('Admin Links')).not.toBeInTheDocument();
+  });
+
   it('renders an "Add-on Links" heading if links exist', () => {
     const addon = createInternalAddonWithLang({
       ...fakeAddon,
@@ -90,6 +97,18 @@ describe(__filename, () => {
     expect(screen.getByText('Add-on Links')).toBeInTheDocument();
   });
 
+  it('renders a CopyAddonId link when the add-on is loaded', () => {
+    const addon = createInternalAddonWithLang({
+      ...fakeAddon,
+      guid: 'some-guid',
+    });
+    render({ addon });
+
+    expect(screen.getByRole('link', { name: 'Copy add-on ID' })).toHaveClass(
+      'CopyAddonId',
+    );
+  });
+
   it('renders an "Add-on Links" heading if support email exists', () => {
     const addon = createInternalAddonWithLang({
       ...fakeAddon,
@@ -100,16 +119,6 @@ describe(__filename, () => {
     render({ addon });
 
     expect(screen.getByText('Add-on Links')).toBeInTheDocument();
-  });
-
-  it('does not render an "Add-on Links" heading if no links exist', () => {
-    const partialAddon = createInternalAddonWithLang(fakeAddon);
-    delete partialAddon.homepage;
-    delete partialAddon.support_email;
-    delete partialAddon.support_url;
-    render({ addon: partialAddon });
-
-    expect(screen.queryByText('Add-on Links')).not.toBeInTheDocument();
   });
 
   it('does not render a homepage if none exists', () => {
@@ -129,7 +138,7 @@ describe(__filename, () => {
     });
     render({ addon });
 
-    expect(screen.queryByText('Add-on Links')).not.toBeInTheDocument();
+    expect(screen.queryByText('Support Email')).not.toBeInTheDocument();
   });
 
   it('renders the homepage of an add-on', () => {
@@ -520,60 +529,73 @@ describe(__filename, () => {
     expect(screen.getByText('Author Links')).toBeInTheDocument();
   });
 
+  describe('Tests for ReportAbuseLink', () => {
+    it('does not render an abuse link for a langpack', () => {
+      const addon = createInternalAddonWithLang({
+        ...fakeAddon,
+        type: ADDON_TYPE_LANG,
+      });
+
+      render({ addon });
+
+      expect(
+        screen.queryByClassName('ReportAbuseLink'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('allows a user to report an add-on for abuse', async () => {
+      render();
+
+      const link = screen.getByRole('link', { name: 'Report this add-on' });
+      expect(link).toHaveAttribute('rel', 'nofollow');
+    });
+
+    it('shows a success message when feedback has been submitted', () => {
+      const addon = fakeAddon;
+      const abuseResponse = createFakeAddonAbuseReport({
+        addon,
+        message: 'some report message',
+      });
+
+      store.dispatch(loadAddonAbuseReport(abuseResponse));
+      render({ addon });
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'You reported this add-on',
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe('related categories', () => {
     const categories = [
       {
         ...fakeCategory,
-        application: CLIENT_APP_ANDROID,
         name: 'Alerts & Update',
         slug: 'alert-update',
         type: ADDON_TYPE_EXTENSION,
       },
       {
         ...fakeCategory,
-        application: CLIENT_APP_ANDROID,
-        name: 'Blogging',
-        slug: 'blogging',
-        type: ADDON_TYPE_EXTENSION,
-      },
-      {
-        ...fakeCategory,
-        application: CLIENT_APP_ANDROID,
-        name: 'Games',
-        slug: 'Games',
-        type: ADDON_TYPE_EXTENSION,
-      },
-      {
-        ...fakeCategory,
-        application: CLIENT_APP_FIREFOX,
-        name: 'Alerts & Update',
-        slug: 'alert-update',
-        type: ADDON_TYPE_EXTENSION,
-      },
-      {
-        ...fakeCategory,
-        application: CLIENT_APP_FIREFOX,
         name: 'Security',
         slug: 'security',
         type: ADDON_TYPE_EXTENSION,
       },
       {
         ...fakeCategory,
-        application: CLIENT_APP_FIREFOX,
         name: 'Anime',
         slug: 'anime',
         type: ADDON_TYPE_STATIC_THEME,
       },
       {
         ...fakeCategory,
-        application: CLIENT_APP_ANDROID,
         name: 'Alerts & Update',
         slug: 'alert-update',
         type: ADDON_TYPE_DICT,
       },
       {
         ...fakeCategory,
-        application: CLIENT_APP_ANDROID,
         name: 'Alerts & Update',
         slug: 'alert-update',
         type: ADDON_TYPE_LANG,
@@ -581,8 +603,8 @@ describe(__filename, () => {
     ];
 
     it('renders related categories', () => {
-      const { slug: slug1, name: name1 } = categories[3];
-      const { slug: slug2, name: name2 } = categories[4];
+      const { slug: slug1, name: name1 } = categories[0];
+      const { slug: slug2, name: name2 } = categories[1];
       const addon = createInternalAddonWithLang({
         ...fakeAddon,
         categories: [slug1, slug2],
@@ -607,7 +629,7 @@ describe(__filename, () => {
     it('does not render related categories when add-on has no category', () => {
       const addon = createInternalAddonWithLang({
         ...fakeAddon,
-        categories: { [CLIENT_APP_FIREFOX]: [] },
+        categories: [],
       });
 
       store.dispatch(loadCategories({ results: categories }));
@@ -624,7 +646,7 @@ describe(__filename, () => {
         // We are migrating away from per-app categories so if an Addon only
         // has Android categories, ignore them completely, even on Android
         // pages.
-        categories: { [CLIENT_APP_ANDROID]: ['some', 'thing'] },
+        categories: ['some', 'thing'],
       });
 
       store.dispatch(loadCategories({ results: categories }));
@@ -640,7 +662,7 @@ describe(__filename, () => {
       const { slug: slug2 } = categories[4];
       const addon = createInternalAddonWithLang({
         ...fakeAddon,
-        categories: { [CLIENT_APP_FIREFOX]: [slug1, slug2] },
+        categories: [slug1, slug2],
       });
 
       store.dispatch(loadCategories({ results: [] }));
@@ -654,10 +676,8 @@ describe(__filename, () => {
     it('does not render related categories when categories for add-on do not exist in clientApp', () => {
       const addon = createInternalAddonWithLang({
         ...fakeAddon,
-        categories: {
-          // 'blogging' and 'games' only exist for CLIENT_APP_ANDROID
-          [CLIENT_APP_FIREFOX]: ['blogging', 'games'],
-        },
+        // 'blogging' and 'games' only exist for CLIENT_APP_ANDROID
+        categories: ['blogging', 'games'],
       });
 
       store.dispatch(loadCategories({ results: categories }));

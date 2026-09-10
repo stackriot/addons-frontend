@@ -11,6 +11,7 @@ import { DEFAULT_API_PAGE_SIZE } from 'amo/api';
 import AddonReviewCard from 'amo/components/AddonReviewCard';
 import AddonSummaryCard from 'amo/components/AddonSummaryCard';
 import FeaturedAddonReview from 'amo/components/FeaturedAddonReview';
+import HeadLinks from 'amo/components/HeadLinks';
 import Page from 'amo/components/Page';
 import { fetchReviewPermissions, fetchReviews } from 'amo/actions/reviews';
 import { setViewContext } from 'amo/actions/viewContext';
@@ -317,6 +318,8 @@ export class AddonReviewListBase extends React.Component<InternalProps> {
         />
       ) : null;
 
+    const shouldNoIndex = !!addon?.is_noindexed || !!reviewId;
+
     return (
       <Page errorHandler={errorHandler}>
         <div
@@ -329,9 +332,12 @@ export class AddonReviewListBase extends React.Component<InternalProps> {
             <Helmet>
               <title>{header}</title>
               <meta name="description" content={this.getPageDescription()} />
-              {reviewId && <meta name="robots" content="noindex, follow" />}
+              {shouldNoIndex && (
+                <meta name="robots" content="noindex, follow" />
+              )}
             </Helmet>
           )}
+          {addon && !reviewId && <HeadLinks />}
 
           {errorHandler.renderErrorIfPresent()}
 

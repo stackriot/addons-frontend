@@ -7,9 +7,9 @@ import path from 'path';
 import {
   apiProdHost,
   baseUrlProd,
-  ga4AdditionalAnalyticsHost,
-  ga4AnalyticsHost,
-  ga4TagManagerHost,
+  gtmAdditionalAnalyticsHost,
+  gtmAnalyticsHost,
+  gtmHost,
   mediaPath,
   prodDomain,
   serverStaticPath,
@@ -72,7 +72,7 @@ module.exports = {
   // The version for the favicon.
   // This should be changed when a new favicon is pushed to the CDN to prevent
   // client caching.
-  faviconVersion: 2,
+  faviconVersion: 3,
 
   // URL patterns of anonymous/stateless pages. These pages won't authenticate
   // the logged in user (if any) and should not contain any non-public data (so
@@ -92,6 +92,7 @@ module.exports = {
     'baseURL',
     'cookieMaxAge',
     'cookieName',
+    'cookieSameSite',
     'cookieSecure',
     'defaultLang',
     'enableDevTools',
@@ -101,8 +102,7 @@ module.exports = {
     'experiments',
     'extensionWorkshopUrl',
     'fxaConfig',
-    'ga4DebugMode',
-    'ga4PropertyId',
+    'gtmContainerId',
     'hrefLangsMap',
     'isDeployed',
     'isDevelopment',
@@ -110,12 +110,10 @@ module.exports = {
     'langs',
     'loggingLevel',
     'mozillaUserId',
+    'recentAddonCutOffDays',
     'rtlLangs',
     'staticPath',
     'trackingEnabled',
-    'trackingId',
-    'trackingSendInitPageView',
-    'trackingSendWebVitals',
     'unsupportedHrefLangs',
     'validClientAppUrlExceptions',
     'validClientApplications',
@@ -136,9 +134,9 @@ module.exports = {
       childSrc: ["'none'"],
       connectSrc: [
         apiProdHost,
-        ga4AnalyticsHost,
-        ga4AdditionalAnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmAdditionalAnalyticsHost,
+        gtmHost,
       ],
       fontSrc: [
         `${baseUrlProd}${staticPath}`,
@@ -151,8 +149,8 @@ module.exports = {
         `${baseUrlProd}${mediaPath}`,
         `${baseUrlProd}${staticPath}`,
         `${baseUrlProd}${serverStaticPath}`,
-        ga4AnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmHost,
       ],
       manifestSrc: ["'none'"],
       mediaSrc: ["'none'"],
@@ -160,8 +158,8 @@ module.exports = {
       // Script is limited to the static path
       scriptSrc: [
         `${baseUrlProd}${staticPath}`,
-        ga4AnalyticsHost,
-        ga4TagManagerHost,
+        gtmAnalyticsHost,
+        gtmHost,
       ],
       styleSrc: [
         `${baseUrlProd}${staticPath}`,
@@ -180,73 +178,51 @@ module.exports = {
 
   // Supported languages.
   langs: [
-    'af',
-    'ar',
-    'ast',
-    'az',
-    'bg',
-    'bn',
-    'bs',
-    'ca',
-    'cak',
     'cs',
-    'da',
     'de',
     'dsb',
     'el',
     'en-CA',
     'en-GB',
     'en-US',
-    'es',
-    'et',
-    'eu',
-    'fa',
+    'es-AR',
+    'es-CL',
+    'es-ES',
+    'es-MX',
     'fi',
     'fr',
     'fur',
     'fy-NL',
-    'ga-IE',
     'he',
     'hr',
     'hsb',
     'hu',
     'ia',
-    'id',
-    'is',
     'it',
     'ja',
     'ka',
     'kab',
     'ko',
-    'lt',
-    'lv',
-    'mk',
-    'mn',
-    'ms',
-    'mt',
     'nb-NO',
     'nl',
     'nn-NO',
-    'pa-IN',
     'pl',
     'pt-BR',
     'pt-PT',
     'ro',
     'ru',
-    'si',
     'sk',
     'sl',
     'sq',
+    'sr',
     'sv-SE',
-    'te',
-    'th',
     'tr',
     'uk',
-    'ur',
     'vi',
     'zh-CN',
     'zh-TW',
   ],
+
   // Exclusion list of unsupported locales for alternate links, see:
   // https://github.com/mozilla/addons-frontend/issues/6644
   unsupportedHrefLangs: [
@@ -261,6 +237,7 @@ module.exports = {
   hrefLangsMap: {
     'x-default': 'en-US',
     en: 'en-US',
+    es: 'es-ES',
     pt: 'pt-PT',
   },
   // Map of langs, usually short to longer ones but can also be used to
@@ -268,6 +245,7 @@ module.exports = {
   langMap: {
     'bn-BD': 'bn',
     en: 'en-US',
+    es: 'es-ES',
     ga: 'ga-IE',
     pt: 'pt-PT',
     sv: 'sv-SE',
@@ -294,15 +272,9 @@ module.exports = {
   localeDir: path.resolve(path.join(__dirname, '../locale')),
 
   trackingEnabled: true,
-  trackingId: 'UA-36116321-7',
-  // send a page view on initialization.
-  trackingSendInitPageView: true,
-  // send web vitals stats to GA
-  trackingSendWebVitals: true,
 
-  // For GA4
-  ga4DebugMode: false,
-  ga4PropertyId: 'G-B9CY1C9VBC',
+  // For GTM
+  gtmContainerId: 'GTM-WVHFHF6',
 
   enablePostCssLoader: true,
 
@@ -320,6 +292,7 @@ module.exports = {
   // These are all URLs that should not get a locale prepended to the URL,
   // because they are locale-independant, like `/firefox/downloads/`.
   validLocaleUrlExceptions: [
+    'activity',
     '__frontend_version__',
     '__version__',
     // This isn't in addons-server, but instead will cause a redirect to
@@ -354,6 +327,7 @@ module.exports = {
     'abuse',
     'admin',
     'apps',
+    'activity',
     'blocklist',
     'blog',
     'contribute.json',
@@ -427,6 +401,8 @@ module.exports = {
 
   extensionWorkshopUrl: 'https://extensionworkshop.com',
 
+  recentAddonCutOffDays: 30,
+
   // The withExperiment HOC relies on this config to enable/disable A/B
   // experiments on AMO.
   experiments: {
@@ -437,6 +413,5 @@ module.exports = {
     //
     // e.g., 20210531_amo_download_funnel_experiment: true,
     '20210714_amo_vpn_promo': false,
-    '20221130_amo_detail_category': false,
   },
 };

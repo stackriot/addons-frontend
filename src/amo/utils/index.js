@@ -15,7 +15,6 @@ import {
   DEFAULT_UTM_MEDIUM,
   DEFAULT_UTM_SOURCE,
   DOWNLOAD_FIREFOX_UTM_CAMPAIGN,
-  PROMOTED_ADDONS_SUMO_URL,
   VISIBLE_ADDON_TYPES_MAPPING,
 } from 'amo/constants';
 import purify from 'amo/purify';
@@ -78,6 +77,35 @@ export const getCanonicalURL = ({
   return `${_config.get('baseURL')}${locationPathname}`;
 };
 
+export const getAddonListingURL = ({
+  _config = config,
+  addon,
+  clientApp,
+  lang,
+  utmCampaign = null,
+  utmContent = null,
+  utmSource = DEFAULT_UTM_SOURCE,
+}: {|
+  _config?: typeof config,
+  addon: AddonType,
+  clientApp: string,
+  lang: string,
+  utmCampaign?: string | null,
+  utmContent?: string | null,
+  utmSource?: string,
+|}): string => {
+  return getCanonicalURL({
+    _config,
+    locationPathname: `/${lang}/${clientApp}${getAddonURL(
+      addon.slug,
+    )}${makeQueryString({
+      utm_campaign: utmCampaign,
+      utm_content: utmContent,
+      utm_source: utmSource,
+    })}`,
+  });
+};
+
 export const checkInternalURL = ({
   _config = config,
   urlString,
@@ -111,17 +139,6 @@ export const checkInternalURL = ({
     isInternal,
     relativeURL,
   };
-};
-
-export const getPromotedBadgesLinkUrl = ({
-  utm_content,
-}: {|
-  utm_content: string,
-|}): string => {
-  return `${PROMOTED_ADDONS_SUMO_URL}${makeQueryStringWithUTM({
-    utm_campaign: null,
-    utm_content,
-  })}`;
 };
 
 export const stripLangFromAmoUrl = ({
@@ -168,23 +185,8 @@ export function convertBoolean(value: mixed): boolean {
   }
 }
 
-/*
- * This is a very simplistic check of the user-agent string in order to redirect to
- * the right set of AMO data.
- *
- * More complete UA detection for compatibility will take place elsewhere.
- *
- */
-export function getClientApp(userAgentString: string): string {
-  // We are going to return android as the application if it's *any* android browser.
-  // whereas the previous behaviour was to only return 'android' for FF Android.
-  // This way we are showing more relevant content, and if we prompt for the user to download
-  // firefox we can prompt them to download Firefox for Android.
-  if (/android/i.test(userAgentString)) {
-    return 'android';
-  }
-  return 'firefox';
-}
+// Re-exported from its own module to avoid a circular dependency
+export { getClientApp } from 'amo/utils/getClientApp';
 
 export function isValidClientApp(
   value: string,
@@ -196,11 +198,22 @@ export function isValidClientApp(
 export function sanitizeHTML(
   text: ?string,
   allowTags: Array<string> = [],
+  allowAttributes: Array<string> = [],
   _purify: typeof purify = purify,
 ): {| __html: string |} {
   // TODO: Accept tags to allow and run through dom-purify.
+  const forbiddenAttributes = ['class', 'style'];
   return {
-    __html: _purify.sanitize(text, { ALLOWED_TAGS: allowTags }),
+    __html: _purify.sanitize(text, {
+      ALLOWED_TAGS: allowTags,
+      ALLOW_DATA_ATTR: false,
+      ALLOW_ARIA_ATTR: false,
+      SANITIZE_NAMED_PROPS: true,
+      FORBID_ATTR: forbiddenAttributes.filter(
+        (attrName) => !allowAttributes.includes(attrName),
+      ),
+      ADD_ATTR: allowAttributes,
+    }),
   };
 }
 
@@ -220,9 +233,11 @@ export function nl2br(text: ?string): string {
  * Developer Hub when you hover over the *Some HTML Supported* link under
  * the textarea field.
  */
-export function sanitizeUserHTML(text: ?string): {| __html: string |} {
-  return sanitizeHTML(nl2br(text), [
-    'a',
+export function sanitizeUserHTML(
+  text: ?string,
+  { allowLinks = true }: { allowLinks: boolean } = {},
+): {| __html: string |} {
+  const allowTags = [
     'abbr',
     'acronym',
     'b',
@@ -235,7 +250,11 @@ export function sanitizeUserHTML(text: ?string): {| __html: string |} {
     'ol',
     'strong',
     'ul',
-  ]);
+  ];
+  if (allowLinks === true) {
+    allowTags.unshift('a');
+  }
+  return sanitizeHTML(nl2br(text), allowTags);
 }
 
 export function isAddonAuthor({

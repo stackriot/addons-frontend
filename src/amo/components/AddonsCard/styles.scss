@@ -1,11 +1,11 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .AddonsCard--horizontal {
   @include respond-to(large) {
     position: relative;
 
     .Card-contents {
-      background: $white;
+      background: var(--base-color);
       border-bottom-left-radius: $border-radius-default;
       border-bottom-right-radius: $border-radius-default;
       padding: 12px 6px;
@@ -40,13 +40,14 @@
         display: inline-block;
         height: 100%;
         padding: 12px 24px;
+        border-radius: $border-radius-default;
         transition: background-color $transition-short ease-in-out;
         width: 100%;
       }
 
       .SearchResult-result {
         display: grid;
-        grid-column-gap: 8px;
+        column-gap: 8px;
         grid-template-columns: 32px auto;
       }
 
@@ -72,10 +73,9 @@
       }
 
       .SearchResult-users {
-        @include margin-start(-3.5px);
-
         grid-column: 2 / 2;
         grid-row: 2 / 2;
+        @include margin-start(-3.5px);
       }
 
       .SearchResult-users,
@@ -99,8 +99,7 @@
 
       .SearchResult-wrapper:focus,
       .SearchResult-wrapper:hover {
-        background-color: $grey-10;
-        border-radius: $border-radius-default;
+        background-color: var(--light-active-color);
 
         // stylelint-disable max-nesting-depth
         .SearchResult-users {

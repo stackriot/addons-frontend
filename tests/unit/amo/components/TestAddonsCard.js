@@ -7,7 +7,6 @@ import AddonsCard from 'amo/components/AddonsCard';
 import {
   ADDON_TYPE_STATIC_THEME,
   CLIENT_APP_ANDROID,
-  DEFAULT_UTM_SOURCE,
   RECOMMENDED,
 } from 'amo/constants';
 import {
@@ -150,10 +149,10 @@ describe(__filename, () => {
     expect(screen.getAllByRole('alert')).toHaveLength(
       DEFAULT_API_PAGE_SIZE * 4,
     );
-    // By default we do not want "theme" placeholders.
-    const imgs = screen.getAllByRole('img');
+    // We can't use `getAllByRole('img')` because the `img` doesnt' have an
+    // `alt` text in `SearchResult` when rendered as a placeholder.
+    const imgs = screen.getAllByClassName('SearchResult-icon--loading');
     expect(imgs).toHaveLength(DEFAULT_API_PAGE_SIZE);
-    expect(imgs[0]).toHaveClass('SearchResult-icon--loading');
   });
 
   it('handles an empty set of addons', () => {
@@ -162,15 +161,18 @@ describe(__filename, () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
-  it('allows you configure the number of placeholders', () => {
+  it('allows you to configure the number of placeholders', () => {
     const placeholderCount = 2;
     render({
       addons: null,
       loading: true,
       placeholderCount,
     });
-
-    expect(screen.getAllByRole('img')).toHaveLength(placeholderCount);
+    // We can't use `getAllByRole('img')` because the `img` doesnt' have an
+    // `alt` text in `SearchResult` when rendered as a placeholder.
+    expect(screen.getAllByClassName('SearchResult-result')).toHaveLength(
+      placeholderCount,
+    );
   });
 
   it('renders addons even when loading', () => {
@@ -277,18 +279,12 @@ describe(__filename, () => {
       expect(stopPropagationWatcher).toHaveBeenCalled();
     });
 
-    it('links the heading to the detail page with UTM params', () => {
-      const addonInstallSource = 'home-page-featured';
-      renderWithResult({ props: { addonInstallSource } });
+    it('links the heading to the detail page', () => {
+      renderWithResult();
 
-      const expectedLink = [
-        `/en-US/android/addon/${slug}/?utm_source=${DEFAULT_UTM_SOURCE}`,
-        'utm_medium=referral',
-        `utm_content=${addonInstallSource}`,
-      ].join('&');
       expect(screen.getByRole('link', { name })).toHaveAttribute(
         'href',
-        expectedLink,
+        `/en-US/android/addon/${slug}/`,
       );
     });
 
@@ -396,6 +392,17 @@ describe(__filename, () => {
       await userEvent.click(screen.getByRole('listitem'));
 
       expect(onClick).toHaveBeenCalledWith(createAddon());
+    });
+
+    it('dispatches the addonInstallSource to Redux store on click', async () => {
+      const addonInstallSource = 'some-custom-install-source';
+      renderWithResult({ props: { addonInstallSource } });
+
+      await userEvent.click(screen.getByRole('listitem'));
+
+      expect(store.getState().addonInstallSource.installSource).toEqual(
+        addonInstallSource,
+      );
     });
 
     it('does not call the custom onClick handler for the li element without an addon', async () => {
@@ -635,17 +642,17 @@ describe(__filename, () => {
         },
       });
 
-      expect(screen.getByClassName('PromotedBadge')).toHaveClass(
-        'PromotedBadge-small',
-      );
-      expect(screen.getByClassName('IconPromotedBadge')).toHaveClass(
-        'IconPromotedBadge-small',
-      );
-      expect(
-        screen.getByRole('link', {
-          name: 'Firefox only recommends add-ons that meet our standards for security and performance.',
-        }),
-      ).toHaveTextContent('Recommended');
+      const badge = screen.getByTestId('badge-recommended');
+      expect(badge).toBeInTheDocument();
+
+      const icon = within(badge).getByClassName('Badge-icon');
+      expect(icon).toBeInTheDocument();
+
+      const link = within(badge).getByRole('link', {
+        name: 'Firefox only recommends add-ons that meet our standards for security and performance.',
+      });
+
+      expect(link).toHaveTextContent('Recommended');
     });
 
     it('passes an onClick function which stops propagation to PromotedBadge', () => {

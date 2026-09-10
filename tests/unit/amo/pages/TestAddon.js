@@ -1,3 +1,4 @@
+/* global window */
 import { LOCATION_CHANGE } from 'redux-first-history';
 import config from 'config';
 import serialize from 'serialize-javascript';
@@ -8,34 +9,35 @@ import { createAddonReview, setLatestReview } from 'amo/actions/reviews';
 import { setViewContext } from 'amo/actions/viewContext';
 import { getAddon } from 'amo/addonManager';
 import { TAAR_IMPRESSION_CATEGORY } from 'amo/components/AddonRecommendations';
+import { CONTRIBUTE_BUTTON_CLICK_CATEGORY } from 'amo/components/ContributeCard';
 import {
-  CONTRIBUTE_BUTTON_CLICK_ACTION,
-  CONTRIBUTE_BUTTON_CLICK_CATEGORY,
-} from 'amo/components/ContributeCard';
-import {
+  ADDONS_CONTENT_REVIEW,
+  ADDONS_EDIT,
+  ADDONS_REVIEW,
+  ADDON_DETAIL_PAGE_VIEW_CATEGORY,
   ADDON_TYPE_DICT,
   ADDON_TYPE_EXTENSION,
   ADDON_TYPE_LANG,
   ADDON_TYPE_STATIC_THEME,
-  ADDONS_CONTENT_REVIEW,
-  ADDONS_EDIT,
-  ADDONS_REVIEW,
   CLIENT_APP_ANDROID,
   CLIENT_APP_FIREFOX,
-  DEFAULT_UTM_SOURCE,
   FATAL_ERROR,
   INCOMPATIBLE_UNSUPPORTED_PLATFORM,
   INSTALLING,
   RECOMMENDED,
+  LINE,
+  SPOTLIGHT,
+  STRATEGIC,
+  REVIEWER_TOOLS_VIEW,
   SET_VIEW_CONTEXT,
   STATIC_THEMES_REVIEW,
+  QR_CODE_UTM_CAMPAIGN,
 } from 'amo/constants';
 import {
   EXPERIMENT_CONFIG,
   VARIANT_SHOW,
 } from 'amo/experiments/20210714_amo_vpn_promo';
-import { EXPERIMENT_CONFIG as suggestionsExperimentConfig } from 'amo/experiments/20221130_amo_detail_category';
-import { ADDONS_BY_AUTHORS_COUNT, extractId } from 'amo/pages/Addon';
+import { extractId } from 'amo/pages/Addon';
 import {
   FETCH_ADDON,
   LOAD_ADDON,
@@ -43,11 +45,6 @@ import {
   getAddonByIdInURL,
   loadAddon,
 } from 'amo/reducers/addons';
-import {
-  EXTENSIONS_BY_AUTHORS_PAGE_SIZE,
-  FETCH_ADDONS_BY_AUTHORS,
-  fetchAddonsByAuthors,
-} from 'amo/reducers/addonsByAuthors';
 import { setClientApp } from 'amo/reducers/api';
 import { FETCH_CATEGORIES } from 'amo/reducers/categories';
 import { setInstallError, setInstallState } from 'amo/reducers/installations';
@@ -66,7 +63,8 @@ import {
 import { reviewListURL } from 'amo/reducers/reviews';
 import { getVersionById } from 'amo/reducers/versions';
 import tracking from 'amo/tracking';
-import { getCanonicalURL, getPromotedBadgesLinkUrl } from 'amo/utils';
+import { getAddonListingURL, getCanonicalURL } from 'amo/utils';
+import { getPromotedBadgesLinkUrl } from 'amo/utils/promoted';
 import { getAddonJsonLinkedData } from 'amo/utils/addons';
 import {
   correctedLocationForPlatform,
@@ -91,7 +89,6 @@ import {
   fakeVersion,
   getElement,
   getMockConfig,
-  loadAddonsByAuthors,
   renderPage as defaultRender,
   screen,
   within,
@@ -123,7 +120,7 @@ jest.mock('amo/addonManager', () => ({
 jest.mock('amo/tracking', () => ({
   ...jest.requireActual('amo/tracking'),
   sendEvent: jest.fn(),
-  setDimension: jest.fn(),
+  setPageVariables: jest.fn(),
   setUserProperties: jest.fn(),
 }));
 
@@ -167,10 +164,8 @@ describe(__filename, () => {
       slug: defaultSlug,
     };
 
-    // Disable the AddonSuggestions experiment for the tests in this file.
-    const fakeConfig = getMockConfig({
-      experiments: { [suggestionsExperimentConfig.id]: false },
-    });
+    // Prevent any experiment from being loaded by default.
+    const fakeConfig = getMockConfig({ experiments: {} });
 
     config.get.mockImplementation((key) => {
       return fakeConfig[key];
@@ -224,6 +219,8 @@ describe(__filename, () => {
     host = [],
     optional = [],
     required = [],
+    optional_data_collection = [],
+    required_data_collection = [],
     versionProps = {},
   } = {}) => {
     return {
@@ -233,6 +230,8 @@ describe(__filename, () => {
         host_permissions: host,
         optional_permissions: optional,
         permissions: required,
+        data_collection_permissions: required_data_collection,
+        optional_data_collection_permissions: optional_data_collection,
       },
 
       ...versionProps,
@@ -244,6 +243,135 @@ describe(__filename, () => {
     renderWithAddon();
 
     expect(dispatch).toHaveBeenCalledWith(setViewContext(addon.type));
+  });
+
+  it('pushes page variables to tracking on mount', () => {
+    tracking.setPageVariables.mockClear();
+    renderWithAddon();
+
+    expect(tracking.setPageVariables).toHaveBeenCalledTimes(1);
+    expect(tracking.setPageVariables).toHaveBeenCalledWith({
+      addon_type: 'extension',
+      page_locale: 'en-US',
+    });
+  });
+
+  it('pushes page variables to tracking on update', async () => {
+    tracking.setPageVariables.mockClear();
+    renderWithAddon();
+
+    expect(tracking.setPageVariables).toHaveBeenCalledTimes(1);
+    tracking.setPageVariables.mockClear();
+
+    addon.slug = `${defaultSlug}-new`;
+    _loadAddon();
+
+    await changeLocation({
+      history,
+      pathname: getLocation({ slug: addon.slug }),
+    });
+
+    await waitFor(() => {
+      expect(tracking.setPageVariables).toHaveBeenCalledTimes(1);
+    });
+
+    expect(tracking.setPageVariables).toHaveBeenCalledWith({
+      addon_type: 'extension',
+      page_locale: 'en-US',
+    });
+  });
+
+  it('clears page variables from tracking on unmount', () => {
+    const { unmount } = renderWithAddon();
+    tracking.setPageVariables.mockClear();
+
+    unmount();
+
+    expect(tracking.setPageVariables).toHaveBeenCalledTimes(1);
+    expect(tracking.setPageVariables).toHaveBeenCalledWith({
+      addon_type: null,
+      page_locale: null,
+    });
+  });
+
+  it('sends a tracking event when the add-on detail page is viewed', () => {
+    renderWithAddon();
+
+    expect(tracking.sendEvent).toHaveBeenCalledWith({
+      category: ADDON_DETAIL_PAGE_VIEW_CATEGORY,
+      params: {
+        extension_name: defaultAddonName,
+        author: authorName,
+        addon_category: 'other',
+        addon_categories_all: 'other',
+        page_path: window.location.pathname,
+      },
+    });
+  });
+
+  it('does not send an add-on detail page view before the add-on is loaded', () => {
+    render();
+
+    expect(tracking.sendEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not duplicate the add-on detail page view on unrelated updates', async () => {
+    renderWithAddon();
+    tracking.sendEvent.mockClear();
+
+    await changeLocation({
+      history,
+      pathname: getLocation(),
+    });
+
+    expect(tracking.sendEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: ADDON_DETAIL_PAGE_VIEW_CATEGORY,
+      }),
+    );
+  });
+
+  it('sends a new add-on detail page view after navigating to another add-on', async () => {
+    const newSlug = `${defaultSlug}-new`;
+    const newAddonName = `${defaultAddonName} new`;
+    store.dispatch(
+      loadAddon({
+        addon: {
+          ...addon,
+          categories: ['privacy-security', 'other'],
+          guid: `${addon.guid}-new`,
+          id: defaultAddonId + 1,
+          name: createLocalizedString(newAddonName),
+          slug: newSlug,
+        },
+        slug: newSlug,
+      }),
+    );
+    renderWithAddon();
+    tracking.sendEvent.mockClear();
+
+    await changeLocation({
+      history,
+      pathname: getLocation({ slug: newSlug }),
+    });
+
+    expect(tracking.sendEvent).toHaveBeenCalledWith({
+      category: ADDON_DETAIL_PAGE_VIEW_CATEGORY,
+      params: {
+        extension_name: newAddonName,
+        author: authorName,
+        addon_category: 'privacy-security',
+        addon_categories_all: 'privacy-security,other',
+        page_path: window.location.pathname,
+      },
+    });
+  });
+
+  it('does not send an add-on detail page view before canonical URL redirect', () => {
+    store.dispatch(loadAddon({ addon, slug: 'addon-id-in-url' }));
+    render({ location: getLocation({ slug: 'addon-id-in-url' }) });
+
+    expect(tracking.sendEvent).not.toHaveBeenCalled();
   });
 
   it('updates the ViewContext on update', async () => {
@@ -356,14 +484,12 @@ describe(__filename, () => {
     expect(
       screen.getByClassName('Addon-WrongPlatformWarning'),
     ).toBeInTheDocument();
+    expect(screen.getByText(/To use Android extensions/)).toBeInTheDocument();
     expect(
-      screen.getByRole('link', {
+      screen.queryByRole('link', {
         name: 'visit our desktop site',
       }),
-    ).toHaveAttribute('href', '/a/different/location/');
-    expect(
-      screen.getByText(/To explore Firefox for desktop add-ons, please/),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it('does not render a WrongPlatformWarning component without an addon', () => {
@@ -377,14 +503,14 @@ describe(__filename, () => {
   it('renders without an add-on', () => {
     render();
 
-    expect(screen.getAllByRole('alert')).toHaveLength(19);
+    expect(screen.getAllByRole('alert')).toHaveLength(7);
   });
 
   it('renders without a version', () => {
     addon.current_version = null;
     renderWithAddon();
 
-    expect(screen.getAllByRole('alert')).toHaveLength(41);
+    expect(screen.getAllByRole('alert')).toHaveLength(17);
   });
 
   it('fetches an add-on when rendering without an add-on', () => {
@@ -589,10 +715,9 @@ describe(__filename, () => {
     // test helper.
     // 3. SEND_SERVER_REDIRECT
     // 4. FETCH_CATEGORIES (initiated by AddonMoreInfo)
-    // 5. FETCH_ADDONS_BY_AUTHORS (initiated by AddonsByAuthorsCard)
     // 6. FETCH_RECOMMENDATIONS (initiated by AddonRecommendations)
 
-    expect(dispatch).toHaveBeenCalledTimes(6);
+    expect(dispatch).toHaveBeenCalledTimes(5);
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ type: LOAD_ADDON }),
     );
@@ -604,9 +729,6 @@ describe(__filename, () => {
     );
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ type: FETCH_CATEGORIES }),
-    );
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: FETCH_ADDONS_BY_AUTHORS }),
     );
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ type: FETCH_RECOMMENDATIONS }),
@@ -657,11 +779,9 @@ describe(__filename, () => {
     ).toBeTruthy();
   });
 
-  it('sanitizes a summary', () => {
-    const summaryText = 'some summary text';
-    addon.summary = createLocalizedString(
-      `${summaryText}<script>alert(document.cookie);</script>`,
-    );
+  it('renders html as plaintext', () => {
+    const summaryText = '<script>alert(document.cookie);</script>';
+    addon.summary = createLocalizedString(summaryText);
     renderWithAddon();
 
     // Verify that the summary text exists without the script tag.
@@ -670,30 +790,6 @@ describe(__filename, () => {
     const addonSummary = screen.getByClassName('Addon-summary');
     expect(
       within(addonSummary).queryByTagName('script'),
-    ).not.toBeInTheDocument();
-  });
-
-  it('adds <br> tags for newlines in a summary', () => {
-    addon.summary = createLocalizedString('Hello\nI am an\n add-on.');
-    renderWithAddon();
-
-    const addonSummary = screen.getByClassName('Addon-summary');
-    expect(within(addonSummary).queryAllByTagName('br')).toHaveLength(2);
-  });
-
-  it('sanitizes bad description HTML', () => {
-    const descriptionText = 'some description text';
-    addon.summary = createLocalizedString(
-      `${descriptionText}<script>alert(document.cookie);</script>`,
-    );
-    renderWithAddon();
-
-    // Verify that the summary text exists without the script tag.
-    expect(screen.getByText(descriptionText)).toBeInTheDocument();
-    // Verify that no script tags exist in the summary.
-    const addonDescription = screen.getByClassName('AddonDescription');
-    expect(
-      within(addonDescription).queryByTagName('script'),
     ).not.toBeInTheDocument();
   });
 
@@ -851,6 +947,36 @@ describe(__filename, () => {
     expect(screen.queryByText('Developer comments')).not.toBeInTheDocument();
   });
 
+  it('shows the developer comments if present and description and summary are blank', () => {
+    addon.description = createLocalizedString('');
+    addon.summary = createLocalizedString('');
+    addon.developer_comments = createLocalizedString('Foo');
+    renderWithAddon();
+
+    expect(screen.getByText('Developer comments')).toBeInTheDocument();
+  });
+
+  it('shows the developer comments if present and description and summary are null', () => {
+    addon.description = null;
+    addon.summary = null;
+    addon.developer_comments = createLocalizedString('Foo');
+    renderWithAddon();
+
+    expect(screen.getByText('Developer comments')).toBeInTheDocument();
+  });
+
+  it('shows the developer comments if present and description is null without duplicating summary', () => {
+    addon.description = null;
+    addon.summary = createLocalizedString('Bar');
+    addon.developer_comments = createLocalizedString('Foo');
+    renderWithAddon();
+
+    expect(screen.getByText('Developer comments')).toBeInTheDocument();
+    expect(
+      screen.queryByClassName('AddonDescription-contents'),
+    ).not.toBeInTheDocument();
+  });
+
   it('displays developer comments', () => {
     const developerComments = 'some awesome developers comments';
     addon.developer_comments = createLocalizedString(developerComments);
@@ -858,19 +984,6 @@ describe(__filename, () => {
 
     expect(screen.getByText('Developer comments')).toBeInTheDocument();
     expect(screen.getByText(developerComments)).toBeInTheDocument();
-  });
-
-  it('passes the expected contentId to ShowMoreCard for developer comments', async () => {
-    addon.developer_comments = createLocalizedString(
-      'some awesome developers comments',
-    );
-    expect(
-      await testContentId({
-        addonProp: 'id',
-        addonPropValue: addon.id + 1,
-        cardClassName: 'Addon-developer-comments',
-      }),
-    ).toBeTruthy();
   });
 
   it('allows some HTML tags in the developer comments', () => {
@@ -931,18 +1044,16 @@ describe(__filename, () => {
     expect(screen.getByText(summary)).toBeInTheDocument();
   });
 
-  it('renders a summary with links', () => {
-    const summaryText = 'some summary text';
-    const linkText = 'link destination';
-    addon.summary = createLocalizedString(
-      `${summaryText} <a href="http://foo.com/">${linkText}</a>`,
-    );
+  it('does not render links in a summary', () => {
+    const linkText = 'click me!';
+    const summaryText = `blah blah <a href="http://foo.com/">${linkText}</a>`;
+    addon.summary = createLocalizedString(summaryText);
     renderWithAddon();
 
+    expect(screen.getByTextAcrossTags(summaryText)).toBeInTheDocument();
     expect(
-      screen.getByTextAcrossTags(`${summaryText} ${linkText}`),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: linkText })).toBeInTheDocument();
+      screen.queryByRole('link', { name: linkText }),
+    ).not.toBeInTheDocument();
   });
 
   it('renders an amo icon image', () => {
@@ -1006,10 +1117,216 @@ describe(__filename, () => {
     );
   });
 
-  it('renders meta data for the add-on', () => {
+  it('renders rating badge', () => {
     renderWithAddon();
 
-    expect(screen.getByRole('link', { name: 'Reviews' })).toBeInTheDocument();
+    const badge = screen.getByTestId(`badge-star-full`);
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('3.5 (10 reviews)');
+  });
+
+  it('renders user count badge with formatted text', () => {
+    renderWithAddon();
+
+    const badge = screen.getByTestId(`badge-user-fill`);
+    expect(badge).toBeInTheDocument();
+    const content = within(badge).getByClassName('Badge-content');
+    expect(content).toHaveTextContent('100 Users');
+  });
+
+  describe('ratings count header', () => {
+    const renderWithRatings = (average, count) => {
+      addon.ratings = { ...fakeAddon.ratings, count, average };
+      renderWithAddon();
+    };
+
+    it('mentions a single reviewer when there is only one rating', () => {
+      renderWithRatings(3, 1);
+
+      expect(screen.getByText('Rated 3 by 1 reviewer')).toBeInTheDocument();
+    });
+
+    it('mentions a multiple reviewers when there are many ratings', () => {
+      renderWithRatings(2.4, 5);
+
+      expect(screen.getByText('Rated 2.4 by 5 reviewers')).toBeInTheDocument();
+    });
+
+    it('localizes the review count', () => {
+      renderWithRatings(2.4, 10000);
+
+      expect(
+        screen.getByText('Rated 2.4 by 10,000 reviewers'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('renders user count badge with zero users', () => {
+    addon = {
+      ...addon,
+      average_daily_users: 0,
+    };
+    renderWithAddon();
+
+    const badge = screen.getByTestId(`badge-user-fill`);
+    expect(badge).toBeInTheDocument();
+    const content = within(badge).getByClassName('Badge-content');
+    expect(content).toHaveTextContent('No Users');
+  });
+
+  it('does not render the user count badge when the add-on is too recent', () => {
+    addon = {
+      ...addon,
+      created: new Date(),
+    };
+    renderWithAddon();
+
+    const badge = screen.queryByTestId(`badge-user-fill`);
+    expect(badge).not.toBeInTheDocument();
+  });
+
+  it('renders user count badge with singular user', () => {
+    addon = {
+      ...addon,
+      average_daily_users: 1,
+    };
+    renderWithAddon();
+
+    const badge = screen.getByTestId(`badge-user-fill`);
+    expect(badge).toBeInTheDocument();
+    const content = within(badge).getByClassName('Badge-content');
+    expect(content).toHaveTextContent('1 User');
+  });
+
+  it('renders user count badge with large formatted number', () => {
+    addon = {
+      ...addon,
+      average_daily_users: 12345,
+    };
+    renderWithAddon();
+
+    const badge = screen.getByTestId(`badge-user-fill`);
+    expect(badge).toBeInTheDocument();
+    const content = within(badge).getByClassName('Badge-content');
+    expect(content).toHaveTextContent('12,345 Users');
+  });
+
+  describe('Addon-warnings section', () => {
+    const getWarningsSection = () => screen.getByClassName('Addon-warnings');
+
+    it('contains non-public notice when addon status is not public', () => {
+      addon.status = 'disabled';
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByText(
+          'This is not a public listing. You are only seeing it because of elevated permissions.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('contains non-public notice when addon is disabled', () => {
+      addon.is_disabled = true;
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByText(
+          'This is not a public listing. You are only seeing it because of elevated permissions.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('does not contain non-public notice when addon is public and not disabled', () => {
+      addon.status = 'public';
+      addon.is_disabled = false;
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).queryByText(
+          'This is not a public listing. You are only seeing it because of elevated permissions.',
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    it('contains AddonInstallError when there is an install error', () => {
+      store.dispatch(
+        setInstallState({
+          guid: addon.guid,
+          status: INSTALLING,
+        }),
+      );
+      store.dispatch(setInstallError({ error: FATAL_ERROR, guid: addon.guid }));
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByClassName('AddonInstallError'),
+      ).toBeInTheDocument();
+    });
+
+    it('contains AddonCompatibilityError when addon has compatibility issues', () => {
+      getClientCompatibility.mockReturnValue(
+        createFakeClientCompatibility({
+          compatible: false,
+          reason: INCOMPATIBLE_UNSUPPORTED_PLATFORM,
+        }),
+      );
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByText(
+          'This add-on is not available on your platform.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('contains InstallWarning when addon exists', () => {
+      correctedLocationForPlatform.mockReturnValue('');
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByText(
+          'This add-on is not actively monitored for security by Mozilla. Make sure you trust it before installing.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('contains WrongPlatformWarning when addon exists', () => {
+      // Mock to ensure WrongPlatformWarning renders with a message
+      correctedLocationForPlatform.mockReturnValue('/en-US/android/');
+      renderWithAddon();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).getByClassName('Addon-WrongPlatformWarning'),
+      ).toBeInTheDocument();
+    });
+
+    it('does not contain InstallWarning when addon does not exist', () => {
+      correctedLocationForPlatform.mockReturnValue('');
+      render();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).queryByText(
+          'This add-on is not actively monitored for security by Mozilla. Make sure you trust it before installing.',
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not contain WrongPlatformWarning when addon does not exist', () => {
+      render();
+
+      const warningsSection = getWarningsSection();
+      expect(
+        within(warningsSection).queryByClassName('Addon-WrongPlatformWarning'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('read reviews footer', () => {
@@ -1077,99 +1394,6 @@ describe(__filename, () => {
         `/${lang}/${clientApp}${reviewListURL({
           addonSlug: defaultSlug,
         })}?utm_campaign=${utmCampaign}`,
-      );
-    });
-  });
-
-  describe('version release notes', () => {
-    const renderWithVersion = (props = {}) => {
-      addon.current_version = { ...fakeVersion, ...props };
-      renderWithAddon();
-    };
-
-    it('is hidden when an add-on has not loaded yet', () => {
-      render();
-
-      expect(
-        screen.queryByClassName('AddonDescription-version-notes'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('is hidden when the add-on does not have a current version', () => {
-      addon.current_version = null;
-      renderWithAddon();
-
-      expect(
-        screen.queryByClassName('AddonDescription-version-notes'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('is hidden when the current version does not have release notes', () => {
-      renderWithVersion({ release_notes: null });
-
-      expect(
-        screen.queryByClassName('AddonDescription-version-notes'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('passes the expected contentId to ShowMoreCard', async () => {
-      expect(
-        await testContentId({
-          addonProp: 'id',
-          addonPropValue: addon.id + 1,
-          cardClassName: 'AddonDescription-version-notes',
-        }),
-      ).toBeTruthy();
-    });
-
-    it('shows the version string', () => {
-      const version = 'v1.4.5';
-      renderWithVersion({ version });
-
-      expect(screen.getByText('Release notes for v1.4.5')).toBeInTheDocument();
-    });
-
-    it('shows the release notes', () => {
-      const releaseNotes = 'Fixed some stuff';
-      renderWithVersion({
-        release_notes: createLocalizedString(releaseNotes),
-      });
-
-      expect(screen.getByText(releaseNotes)).toBeInTheDocument();
-    });
-
-    it('allows some HTML tags', () => {
-      const releaseNotes = '<b>lots</b> <i>of</i> <blink>bug fixes</blink>';
-      renderWithVersion({
-        release_notes: createLocalizedString(releaseNotes),
-      });
-
-      const notesCard = screen.getByClassName('AddonDescription-version-notes');
-
-      expect(
-        screen.getByTextAcrossTags('lots of bug fixes'),
-      ).toBeInTheDocument();
-      expect(within(notesCard).getByTagName('b')).toHaveTextContent('lots');
-      expect(within(notesCard).getByTagName('i')).toHaveTextContent('of');
-    });
-
-    it('allows some ul-li tags', () => {
-      const releaseNotes = '<b>The List</b><ul><li>one</li><li>two</li></ul>';
-      renderWithVersion({
-        release_notes: createLocalizedString(releaseNotes),
-      });
-
-      const notesCard = screen.getByClassName('AddonDescription-version-notes');
-
-      expect(
-        within(notesCard).getByTextAcrossTags('The Listonetwo'),
-      ).toBeInTheDocument();
-      expect(within(notesCard).getByRole('list')).toBeInTheDocument();
-      expect(within(notesCard).getAllByRole('listitem')[0]).toHaveTextContent(
-        'one',
-      );
-      expect(within(notesCard).getAllByRole('listitem')[1]).toHaveTextContent(
-        'two',
       );
     });
   });
@@ -1433,13 +1657,16 @@ describe(__filename, () => {
       ).not.toBeInTheDocument();
     });
 
-    it('shows a code review link for an extension if the user has permission', () => {
-      renderWithPermissions({ permissions: ADDONS_REVIEW });
+    it.each([ADDONS_REVIEW, REVIEWER_TOOLS_VIEW])(
+      'shows a code review link for an extension if the user has the %s permission',
+      (permission) => {
+        renderWithPermissions({ permissions: [permission] });
 
-      expect(
-        screen.getByRole('link', { name: 'Review add-on code' }),
-      ).toHaveAttribute('href', `/reviewers/review/${defaultAddonId}`);
-    });
+        expect(
+          screen.getByRole('link', { name: 'Review add-on code' }),
+        ).toHaveAttribute('href', `/reviewers/review/${defaultAddonId}`);
+      },
+    );
 
     it('does not show a code review link if the user does not have permission', () => {
       renderWithPermissions({ permissions: ADDONS_EDIT });
@@ -1548,9 +1775,18 @@ describe(__filename, () => {
         'content',
         String(addon.created),
       );
-      expect(getElement('meta[name="twitter:site"]')).toHaveAttribute(
-        'content',
-        '@mozamo',
+      expect(getElement('meta[name="robots"]')).toBeUndefined();
+    });
+
+    it('renders a robots meta tag when add-on is noindexed', async () => {
+      addon.is_noindexed = true;
+      renderWithAddon();
+
+      await waitFor(() =>
+        expect(getElement('meta[name="robots"]')).toHaveAttribute(
+          'content',
+          'noindex, follow',
+        ),
       );
     });
 
@@ -1684,6 +1920,9 @@ describe(__filename, () => {
             `continued development by making a small contribution.`,
         ),
       ).toBeInTheDocument();
+      expect(screen.queryByClassName('ContributeCard')).toHaveClass(
+        'ContributeCard-extension',
+      );
     });
 
     it('displays content for multiple extension developers', () => {
@@ -1712,6 +1951,9 @@ describe(__filename, () => {
             `creation by making a small contribution.`,
         ),
       ).toBeInTheDocument();
+      expect(screen.queryByClassName('ContributeCard')).toHaveClass(
+        'ContributeCard-statictheme',
+      );
     });
 
     it('displays content for multiple theme artists', () => {
@@ -1741,6 +1983,9 @@ describe(__filename, () => {
             `continued work by making a small contribution.`,
         ),
       ).toBeInTheDocument();
+      expect(screen.queryByClassName('ContributeCard')).toHaveClass(
+        'ContributeCard-language',
+      );
     });
 
     it('displays content for multiple add-on authors', () => {
@@ -1767,9 +2012,11 @@ describe(__filename, () => {
 
       expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
       expect(tracking.sendEvent).toHaveBeenCalledWith({
-        action: CONTRIBUTE_BUTTON_CLICK_ACTION,
         category: CONTRIBUTE_BUTTON_CLICK_CATEGORY,
-        label: addon.guid,
+        params: expect.objectContaining({
+          page_path: window.location.pathname,
+          trusted: expect.any(Boolean),
+        }),
       });
     });
   });
@@ -1782,14 +2029,18 @@ describe(__filename, () => {
         addon.current_version = null;
         renderWithAddon();
 
-        expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('Permissions and data'),
+        ).not.toBeInTheDocument();
       });
 
       it('renders nothing for a version with no permissions', () => {
         addon.current_version = createVersionWithPermissions();
         renderWithAddon();
 
-        expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('Permissions and data'),
+        ).not.toBeInTheDocument();
       });
 
       it('renders nothing for a version with no displayable permissions', () => {
@@ -1799,7 +2050,9 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('Permissions and data'),
+        ).not.toBeInTheDocument();
       });
     });
 
@@ -1823,17 +2076,13 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(screen.getByText('Permissions')).toBeInTheDocument();
-        const learnMoreLink = within(getPermissionsCard()).getByText(
-          'Learn more',
-        );
+        expect(screen.getByText('Permissions and data')).toBeInTheDocument();
+        const learnMoreLink =
+          within(getPermissionsCard()).getByText('Learn more');
         expect(learnMoreLink).toHaveAttribute(
           'href',
           'https://support.mozilla.org/kb/permission-request-messages-firefox-extensions',
         );
-        expect(
-          within(learnMoreLink).getByClassName('Icon-external-dark'),
-        ).toBeInTheDocument();
       });
 
       it('renders required permissions only', () => {
@@ -1842,14 +2091,14 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(screen.getByText('This add-on needs to:')).toHaveClass(
+        expect(screen.getByText('Required permissions:')).toHaveClass(
           'PermissionsCard-subhead--required',
         );
         expect(within(getPermissionsCard()).getByTagName('ul')).toHaveClass(
           'PermissionsCard-list--required',
         );
         expect(
-          screen.getByClassName('Icon-permission-bookmarks'),
+          screen.getByText('Read and modify bookmarks'),
         ).toBeInTheDocument();
         expect(
           screen.queryByClassName('PermissionsCard-subhead--optional'),
@@ -1866,17 +2115,17 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(screen.getByText('This add-on may also ask to:')).toHaveClass(
+        expect(screen.getByText('Optional permissions:')).toHaveClass(
           'PermissionsCard-subhead--optional',
         );
         expect(within(getPermissionsCard()).getByTagName('ul')).toHaveClass(
           'PermissionsCard-list--optional',
         );
         expect(
-          screen.getByClassName('Icon-permission-bookmarks'),
+          screen.getByText('Access your data for example.com'),
         ).toBeInTheDocument();
         expect(
-          screen.getByText('Access your data for example.com'),
+          screen.getByText('Read and modify bookmarks'),
         ).toBeInTheDocument();
         expect(
           screen.queryByClassName('PermissionsCard-subhead--required'),
@@ -1894,26 +2143,116 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(screen.getByText('This add-on needs to:')).toHaveClass(
+        expect(screen.getByText('Required permissions:')).toHaveClass(
           'PermissionsCard-subhead--required',
         );
-        expect(screen.getByText('This add-on may also ask to:')).toHaveClass(
+        expect(screen.getByText('Optional permissions:')).toHaveClass(
           'PermissionsCard-subhead--optional',
         );
         expect(
-          screen.getByClassName('Icon-permission-bookmarks'),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByClassName('Icon-permission-history'),
-        ).toBeInTheDocument();
-        expect(
           screen.getByText('Access your data for example.com'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Access browsing history')).toBeInTheDocument();
+        expect(
+          screen.getByText('Read and modify bookmarks'),
         ).toBeInTheDocument();
         expect(
           screen.getByClassName('PermissionsCard-list--required'),
         ).toBeInTheDocument();
         expect(
           screen.getByClassName('PermissionsCard-list--optional'),
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe('with data collection permissions', () => {
+      it('renders required permissions only', () => {
+        addon.current_version = createVersionWithPermissions({
+          required_data_collection: ['searchTerms'],
+        });
+        renderWithAddon();
+
+        expect(
+          screen.getByText(
+            'Required data collection, according to the developer:',
+          ),
+        ).toHaveClass('PermissionsCard-subhead--required');
+        expect(within(getPermissionsCard()).getByTagName('ul')).toHaveClass(
+          'PermissionsCard-list--required',
+        );
+        expect(screen.getByText('Search terms')).toBeInTheDocument();
+        expect(
+          screen.queryByClassName('PermissionsCard-subhead--optional'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByClassName('PermissionsCard-list--optional'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('renders optional permissions only', () => {
+        addon.current_version = createVersionWithPermissions({
+          optional_data_collection: ['technicalAndInteraction'],
+        });
+        renderWithAddon();
+
+        expect(
+          screen.getByText(
+            'Optional data collection, according to the developer:',
+          ),
+        ).toHaveClass('PermissionsCard-subhead--optional');
+        expect(within(getPermissionsCard()).getByTagName('ul')).toHaveClass(
+          'PermissionsCard-list--optional',
+        );
+        expect(
+          screen.getByText('Technical and interaction data'),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByClassName('PermissionsCard-subhead--required'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByClassName('PermissionsCard-list--required'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('renders both optional and required permissions', () => {
+        addon.current_version = createVersionWithPermissions({
+          required_data_collection: ['authenticationInfo'],
+          optional_data_collection: ['websiteContent'],
+        });
+        renderWithAddon();
+
+        expect(
+          screen.getByText(
+            'Required data collection, according to the developer:',
+          ),
+        ).toHaveClass('PermissionsCard-subhead--required');
+        expect(
+          screen.getByText(
+            'Optional data collection, according to the developer:',
+          ),
+        ).toHaveClass('PermissionsCard-subhead--optional');
+        expect(screen.getByText('Website content')).toBeInTheDocument();
+        expect(
+          screen.getByClassName('PermissionsCard-list--required'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByClassName('PermissionsCard-list--optional'),
+        ).toBeInTheDocument();
+      });
+
+      it('renders the special "none" data collection permission changing the header', () => {
+        addon.current_version = createVersionWithPermissions({
+          required_data_collection: ['none'],
+        });
+        renderWithAddon();
+
+        expect(screen.getByText('Data collection:')).toHaveClass(
+          'PermissionsCard-subhead--required',
+        );
+        expect(
+          screen.getByText(
+            "The developer says this extension doesn't require data collection.",
+          ),
         ).toBeInTheDocument();
       });
     });
@@ -1932,9 +2271,6 @@ describe(__filename, () => {
       });
       renderWithAddon();
 
-      expect(
-        screen.getAllByClassName('Icon-permission-hostPermission'),
-      ).toHaveLength(6);
       expect(
         screen.getByText(
           'Access your data for sites in the mozilla.org domain',
@@ -1975,9 +2311,6 @@ describe(__filename, () => {
       renderWithAddon();
 
       expect(
-        screen.getAllByClassName('Icon-permission-hostPermission'),
-      ).toHaveLength(5);
-      expect(
         screen.getByText('Access your data for developer.mozilla.org'),
       ).toBeInTheDocument();
       expect(
@@ -2010,9 +2343,6 @@ describe(__filename, () => {
         // The all URLs permission will be displayed in both required and
         // optional permissions.
         expect(
-          screen.getAllByClassName('Icon-permission-hostPermission'),
-        ).toHaveLength(2);
-        expect(
           screen.getAllByText('Access your data for all websites'),
         ).toHaveLength(2);
       },
@@ -2030,9 +2360,6 @@ describe(__filename, () => {
         });
         renderWithAddon();
 
-        expect(
-          screen.getAllByClassName('Icon-permission-hostPermission'),
-        ).toHaveLength(1);
         expect(
           screen.getByText('Access your data for all websites'),
         ).toBeInTheDocument();
@@ -2078,9 +2405,6 @@ describe(__filename, () => {
       });
       renderWithAddon();
 
-      expect(
-        screen.getAllByClassName('Icon-permission-hostPermission'),
-      ).toHaveLength(9);
       // This will be displayed in both required and optional permissions.
       expect(
         screen.getAllByText(
@@ -2121,6 +2445,12 @@ describe(__filename, () => {
 
   describe('Tests for AddonRecommendations', () => {
     const thisErrorHandlerId = 'AddonRecommendations';
+
+    it('defines the tracking category for recommendations clicks', () => {
+      expect(TAAR_IMPRESSION_CATEGORY).toEqual(
+        'amo_addon_recommendations_clicked',
+      );
+    });
 
     function doFetchRecommendations(guid = addon.guid) {
       store.dispatch(
@@ -2182,17 +2512,10 @@ describe(__filename, () => {
       });
       renderWithAddon();
 
-      const expectedLink = [
-        `/${lang}/${clientApp}/addon/${slug}/?utm_source=${DEFAULT_UTM_SOURCE}`,
-        'utm_medium=referral',
-        `utm_content=${outcome}`,
-      ].join('&');
-
-      // This shows that the add-on was passed to AddonsCard, along
-      // with a correct addonInstallSource.
+      // This shows that the add-on was passed to AddonsCard.
       expect(screen.getByRole('link', { name })).toHaveAttribute(
         'href',
-        expectedLink,
+        `/${lang}/${clientApp}/addon/${slug}/`,
       );
       // This shows that the header was passed.
       expect(
@@ -2241,14 +2564,9 @@ describe(__filename, () => {
       });
       renderWithAddon();
 
-      const expectedLink = [
-        `/${lang}/${clientApp}/addon/${slug}/?utm_source=${DEFAULT_UTM_SOURCE}`,
-        'utm_medium=referral',
-        `utm_content=${outcome}`,
-      ].join('&');
       expect(screen.getByRole('link', { name })).toHaveAttribute(
         'href',
-        expectedLink,
+        `/${lang}/${clientApp}/addon/${slug}/`,
       );
       expect(screen.getByText('Other popular extensions')).toBeInTheDocument();
     });
@@ -2270,14 +2588,9 @@ describe(__filename, () => {
       });
       renderWithAddon();
 
-      const expectedLink = [
-        `/${lang}/${clientApp}/addon/${slug}/?utm_source=${DEFAULT_UTM_SOURCE}`,
-        'utm_medium=referral',
-        `utm_content=${outcome}`,
-      ].join('&');
       expect(screen.getByRole('link', { name })).toHaveAttribute(
         'href',
-        expectedLink,
+        `/${lang}/${clientApp}/addon/${slug}/`,
       );
       expect(screen.getByText('Other popular extensions')).toBeInTheDocument();
     });
@@ -2394,7 +2707,6 @@ describe(__filename, () => {
     });
 
     it('should send a GA ping when recommendations are loaded', async () => {
-      const fallbackReason = 'timeout';
       const outcome = OUTCOME_RECOMMENDED_FALLBACK;
       renderWithAddon();
 
@@ -2402,21 +2714,24 @@ describe(__filename, () => {
 
       doLoadRecommendations({
         outcome,
-        fallbackReason,
+        fallbackReason: 'timeout',
       });
 
       await waitFor(() => {
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
       });
       expect(tracking.sendEvent).toHaveBeenCalledWith({
-        action: `${outcome}-${fallbackReason}`,
         category: TAAR_IMPRESSION_CATEGORY,
-        label: addon.guid,
+        params: expect.objectContaining({
+          extension_name: defaultAddonName,
+          author: authorName,
+          addon_category: 'other',
+          addon_categories_all: 'other',
+        }),
       });
     });
 
     it('should send a GA ping without a fallback', async () => {
-      const fallbackReason = null;
       const outcome = OUTCOME_RECOMMENDED;
       renderWithAddon();
 
@@ -2424,22 +2739,27 @@ describe(__filename, () => {
 
       doLoadRecommendations({
         outcome,
-        fallbackReason,
+        fallbackReason: null,
       });
 
       await waitFor(() => {
         expect(tracking.sendEvent).toHaveBeenCalledTimes(1);
       });
       expect(tracking.sendEvent).toHaveBeenCalledWith({
-        action: outcome,
         category: TAAR_IMPRESSION_CATEGORY,
-        label: addon.guid,
+        params: expect.objectContaining({
+          extension_name: defaultAddonName,
+          author: authorName,
+          addon_category: 'other',
+          addon_categories_all: 'other',
+        }),
       });
     });
 
     it('should not send a GA ping when recommendations are loading', () => {
       doFetchRecommendations();
       renderWithAddon();
+      tracking.sendEvent.mockClear();
 
       expect(tracking.sendEvent).not.toHaveBeenCalled();
     });
@@ -2447,458 +2767,9 @@ describe(__filename, () => {
     it('should not send a GA ping when there an error', () => {
       createFailedErrorHandler({ id: thisErrorHandlerId, store });
       renderWithAddon();
+      tracking.sendEvent.mockClear();
 
       expect(tracking.sendEvent).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('more add-ons by authors', () => {
-    it('puts "add-ons by author" in main content if type is theme', () => {
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_STATIC_THEME,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      // Verifying that Addon passes a className to AddonsByAuthorsCard.
-      expect(screen.getByClassName('AddonsByAuthorsCard')).toHaveClass(
-        'Addon-MoreAddonsCard',
-      );
-
-      expect(screen.getAllByClassName('AddonsByAuthorsCard')).toHaveLength(1);
-      expect(
-        within(screen.getByClassName('Addon-main-content')).getByText(
-          `More themes by ${authorName}`,
-        ),
-      ).toBeInTheDocument();
-    });
-
-    it('puts "add-ons by author" outside main if type is not theme', () => {
-      addon.type = ADDON_TYPE_EXTENSION;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      expect(screen.getAllByClassName('AddonsByAuthorsCard')).toHaveLength(1);
-      expect(
-        // eslint-disable-next-line testing-library/prefer-presence-queries
-        within(screen.getByClassName('Addon-main-content')).queryByText(
-          `More themes by ${authorName}`,
-        ),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByText(`More extensions by ${authorName}`),
-      ).toBeInTheDocument();
-    });
-
-    it('is hidden when an add-on has not loaded yet', () => {
-      render();
-
-      expect(
-        screen.queryByClassName('AddonsByAuthorsCard'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('is hidden when add-on has no authors', () => {
-      addon.authors = [];
-      renderWithAddon();
-
-      expect(
-        screen.queryByClassName('AddonsByAuthorsCard'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('displays more add-ons by authors for an extension', async () => {
-      const moreAddonName = 'Name of more add-on';
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonName: moreAddonName,
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 2,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      const addonsByAuthorsCard = screen.getByClassName('AddonsByAuthorsCard');
-      expect(
-        await within(addonsByAuthorsCard).findByText(
-          `More extensions by ${authorName}`,
-        ),
-      ).toBeInTheDocument();
-      expect(
-        within(addonsByAuthorsCard).getByRole('link', {
-          name: `${moreAddonName}-0`,
-        }),
-      ).toBeInTheDocument();
-      expect(
-        within(addonsByAuthorsCard).getByRole('link', {
-          name: `${moreAddonName}-1`,
-        }),
-      ).toBeInTheDocument();
-      // Checking that it passes showSummary: false to AddonsCard.
-      expect(
-        within(addonsByAuthorsCard).queryByClassName('SearchResult-summary'),
-      ).not.toBeInTheDocument();
-      expect(addonsByAuthorsCard).toHaveClass('AddonsCard--horizontal');
-    });
-
-    it('displays more add-ons by authors for a theme', async () => {
-      const moreAddonName = 'Name of more add-on';
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonName: moreAddonName,
-        addonType: ADDON_TYPE_STATIC_THEME,
-        count: 2,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      const addonsByAuthorsCard = screen.getByClassName('AddonsByAuthorsCard');
-      expect(
-        await within(addonsByAuthorsCard).findByText(
-          `More themes by ${authorName}`,
-        ),
-      ).toBeInTheDocument();
-      expect(
-        within(addonsByAuthorsCard).getByRole('link', {
-          name: `${moreAddonName}-0`,
-        }),
-      ).toBeInTheDocument();
-      expect(
-        within(addonsByAuthorsCard).getByRole('link', {
-          name: `${moreAddonName}-1`,
-        }),
-      ).toBeInTheDocument();
-    });
-
-    it('adds a CSS class to the main component when there are add-ons', async () => {
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      const addonComponent = screen.getByClassName('Addon');
-
-      await waitFor(() =>
-        expect(addonComponent).toHaveClass('Addon--has-more-than-0-addons'),
-      );
-      expect(addonComponent).not.toHaveClass('Addon--has-more-than-3-addons');
-    });
-
-    it('adds a CSS class when there are more than 3 other add-ons', async () => {
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 4,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      const addonComponent = screen.getByClassName('Addon');
-
-      await waitFor(() =>
-        expect(addonComponent).toHaveClass('Addon--has-more-than-0-addons'),
-      );
-      expect(addonComponent).toHaveClass('Addon--has-more-than-3-addons');
-    });
-  });
-
-  describe('Tests for AddonsByAuthorsCard', () => {
-    const getThisErrorHandlerId = (type) => `AddonsByAuthorsCard-${type}`;
-
-    it('should render nothing if there are no add-ons', async () => {
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 0,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      await waitFor(() =>
-        expect(
-          screen.queryByClassName('AddonsByAuthorsCard'),
-        ).not.toBeInTheDocument(),
-      );
-    });
-
-    it('should render a loading state on first instantiation', () => {
-      renderWithAddon();
-
-      // Expect 6 placeholders with 4 LoadingText each.
-      expect(
-        within(screen.getByClassName('AddonsByAuthorsCard')).getAllByRole(
-          'alert',
-        ),
-      ).toHaveLength(24);
-    });
-
-    it('should render a card with loading state if loading', () => {
-      store.dispatch(
-        fetchAddonsByAuthors({
-          addonType: ADDON_TYPE_EXTENSION,
-          authorIds: [authorUserId],
-          errorHandlerId: getThisErrorHandlerId(ADDON_TYPE_EXTENSION),
-          pageSize: EXTENSIONS_BY_AUTHORS_PAGE_SIZE,
-        }),
-      );
-      renderWithAddon();
-
-      expect(
-        within(screen.getByClassName('AddonsByAuthorsCard')).getAllByRole(
-          'alert',
-        ),
-      ).toHaveLength(24);
-    });
-
-    // We want to always make sure to do a fetch to make sure
-    // we have the latest addons list.
-    // See: https://github.com/mozilla/addons-frontend/issues/4852
-    it('should always fetch addons by authors', () => {
-      const dispatch = jest.spyOn(store, 'dispatch');
-      renderWithAddon();
-
-      expect(dispatch).toHaveBeenCalledWith(
-        fetchAddonsByAuthors({
-          addonType: ADDON_TYPE_EXTENSION,
-          authorIds: [authorUserId],
-          errorHandlerId: getThisErrorHandlerId(ADDON_TYPE_EXTENSION),
-          forAddonSlug: defaultSlug,
-          pageSize: '6',
-        }),
-      );
-    });
-
-    it('should dispatch a fetch action if authorIds are updated', async () => {
-      const dispatch = jest.spyOn(store, 'dispatch');
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      dispatch.mockClear();
-
-      // Render the page for a different add-on with a different author.
-      const newAuthorId = authorUserId + 1;
-      const newSlug = `${defaultSlug}-new`;
-      addon.authors = [{ ...addon.author, id: newAuthorId }];
-      addon.slug = newSlug;
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      _loadAddon();
-
-      await changeLocation({
-        history,
-        pathname: getLocation({ slug: newSlug }),
-      });
-
-      expect(dispatch).toHaveBeenCalledWith(
-        fetchAddonsByAuthors({
-          addonType: ADDON_TYPE_STATIC_THEME,
-          authorIds: [newAuthorId],
-          errorHandlerId: getThisErrorHandlerId(ADDON_TYPE_STATIC_THEME),
-          forAddonSlug: newSlug,
-          pageSize: '6',
-        }),
-      );
-
-      // Make sure an authorIds update even with the same addonType
-      // dispatches a fetch action.
-      const anotherAuthorId = newAuthorId + 1;
-      const anotherSlug = `${newSlug}-new`;
-      addon.authors = [{ ...addon.author, id: anotherAuthorId }];
-      addon.slug = anotherSlug;
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      _loadAddon();
-
-      await changeLocation({
-        history,
-        pathname: getLocation({ slug: anotherSlug }),
-      });
-
-      expect(dispatch).toHaveBeenCalledWith(
-        fetchAddonsByAuthors({
-          addonType: ADDON_TYPE_STATIC_THEME,
-          authorIds: [anotherAuthorId],
-          errorHandlerId: getThisErrorHandlerId(ADDON_TYPE_STATIC_THEME),
-          forAddonSlug: anotherSlug,
-          pageSize: '6',
-        }),
-      );
-    });
-
-    it('should dispatch a fetch action if addonType is updated', async () => {
-      const dispatch = jest.spyOn(store, 'dispatch');
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      dispatch.mockClear();
-
-      // Render the page for a different add-on with a different type.
-      const newSlug = `${defaultSlug}-new`;
-      addon.slug = newSlug;
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      _loadAddon();
-
-      await changeLocation({
-        history,
-        pathname: getLocation({ slug: newSlug }),
-      });
-
-      expect(dispatch).toHaveBeenCalledWith(
-        fetchAddonsByAuthors({
-          addonType: ADDON_TYPE_STATIC_THEME,
-          authorIds: [authorUserId],
-          errorHandlerId: getThisErrorHandlerId(ADDON_TYPE_STATIC_THEME),
-          forAddonSlug: newSlug,
-          pageSize: '6',
-        }),
-      );
-    });
-
-    it('should not dispatch a fetch action if props are not changed', async () => {
-      const dispatch = jest.spyOn(store, 'dispatch');
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_EXTENSION,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      dispatch.mockClear();
-
-      // Render the page for the same add-on, with an unrelated prop change..
-      addon.name = createLocalizedString('Some other name');
-      _loadAddon();
-
-      await changeLocation({
-        history,
-        pathname: getLocation({ slug: defaultSlug }),
-      });
-
-      expect(dispatch).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: FETCH_ADDONS_BY_AUTHORS }),
-      );
-    });
-
-    it.each([ADDON_TYPE_EXTENSION, ADDON_TYPE_STATIC_THEME])(
-      'should display at most numberOfAddons for %s',
-      (type) => {
-        addon.type = type;
-        renderWithAddon();
-
-        loadAddonsByAuthors({
-          addonType: ADDON_TYPE_EXTENSION,
-          count: 10,
-          forAddonSlug: defaultSlug,
-          store,
-        });
-
-        expect(
-          within(screen.getByClassName('AddonsByAuthorsCard')).getAllByRole(
-            'listitem',
-          ),
-        ).toHaveLength(ADDONS_BY_AUTHORS_COUNT);
-      },
-    );
-
-    it('should add a theme class if it is a static theme', () => {
-      addon.type = ADDON_TYPE_STATIC_THEME;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: ADDON_TYPE_STATIC_THEME,
-        count: 10,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      expect(screen.getByClassName('AddonsByAuthorsCard')).toHaveClass(
-        'AddonsByAuthorsCard--theme',
-      );
-    });
-
-    it.each([
-      [ADDON_TYPE_DICT, `More dictionaries by ${authorName}`],
-      [ADDON_TYPE_EXTENSION, `More extensions by ${authorName}`],
-      [ADDON_TYPE_LANG, `More language packs by ${authorName}`],
-      [ADDON_TYPE_STATIC_THEME, `More themes by ${authorName}`],
-      ['unknown-type', `More add-ons by ${authorName}`],
-    ])('shows expected header for %s', (type, header) => {
-      addon.type = type;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: type,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        store,
-      });
-
-      expect(screen.getByText(header)).toBeInTheDocument();
-    });
-
-    it.each([
-      [ADDON_TYPE_DICT, 'More dictionaries by these translators'],
-      [ADDON_TYPE_EXTENSION, 'More extensions by these developers'],
-      [ADDON_TYPE_LANG, 'More language packs by these translators'],
-      [ADDON_TYPE_STATIC_THEME, 'More themes by these artists'],
-      ['unknown-type', 'More add-ons by these developers'],
-    ])('shows expected header for %s with multiple authors', (type, header) => {
-      addon.type = type;
-      addon.authors = fakeAuthors;
-      renderWithAddon();
-
-      loadAddonsByAuthors({
-        addonType: type,
-        count: 1,
-        forAddonSlug: defaultSlug,
-        multipleAuthors: true,
-        store,
-      });
-
-      expect(screen.getByText(header)).toBeInTheDocument();
-    });
-
-    it('renders an error when an API error is thrown', () => {
-      const message = 'Some error message';
-      createFailedErrorHandler({
-        id: getThisErrorHandlerId(ADDON_TYPE_EXTENSION),
-        message,
-        store,
-      });
-      renderWithAddon();
-
-      expect(screen.getByText(message)).toBeInTheDocument();
     });
   });
 
@@ -2911,12 +2782,11 @@ describe(__filename, () => {
     it('can be rendered as large', () => {
       renderWithPromotedCategory();
 
-      expect(screen.getByClassName('PromotedBadge')).toHaveClass(
-        'PromotedBadge-large',
-      );
-      expect(screen.getByClassName('IconPromotedBadge')).toHaveClass(
-        'IconPromotedBadge-large',
-      );
+      const badge = screen.getByTestId(`badge-${RECOMMENDED}`);
+      expect(badge).toBeInTheDocument();
+
+      const icon = within(badge).getByClassName('Badge-icon');
+      expect(icon).toHaveClass('Badge-icon--large');
     });
 
     it.each([
@@ -2930,52 +2800,55 @@ describe(__filename, () => {
         'Firefox only recommends add-ons that meet our standards for security and performance.',
         'Recommended',
       ],
-      [
-        'verified',
-        'This add-on has been reviewed to meet our standards for security and performance.',
-        'Verified',
-      ],
     ])(
       'renders the category "%s" as expected',
       (category, linkTitle, label) => {
         renderWithPromotedCategory(category);
 
-        expect(screen.getByClassName('PromotedBadge')).toHaveClass(
-          `PromotedBadge--${category}`,
-        );
+        const badge = screen.getByTestId(`badge-${category}`);
 
-        const link = screen.getByTitle(linkTitle);
+        expect(badge).toBeInTheDocument();
+
+        const link = within(badge).getByTitle(linkTitle);
         expect(link).toHaveAttribute(
           'href',
           getPromotedBadgesLinkUrl({
             utm_content: 'promoted-addon-badge',
           }),
         );
-        expect(link).toHaveClass(`PromotedBadge-link--${category}`);
+        expect(link).toHaveClass(`Badge-link`);
 
-        expect(screen.getByText(label)).toHaveClass(
-          `PromotedBadge-label--${category}`,
-        );
-
-        if (category !== 'line') {
-          // eslint-disable-next-line jest/no-conditional-expect
-          expect(
-            screen.getByClassName('IconPromotedBadge-iconPath'),
-          ).toHaveClass(`IconPromotedBadge-iconPath--${category}`);
-        }
+        const content = within(badge).getByClassName('Badge-content');
+        expect(content).toHaveTextContent(label);
       },
     );
 
+    it('does not render the strategic or spotlight badges and correctly renders only the most important badge (RECOMMENDED)', () => {
+      const categories = [LINE, RECOMMENDED, STRATEGIC, SPOTLIGHT];
+      addon.promoted = categories.map((category) => ({
+        category,
+        apps: [clientApp],
+      }));
+      renderWithAddon();
+
+      [LINE, STRATEGIC, SPOTLIGHT].forEach((category) => {
+        expect(
+          screen.queryByTestId(`badge-${category}`),
+        ).not.toBeInTheDocument();
+      });
+
+      const badge = screen.getByTestId(`badge-${RECOMMENDED}`);
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent('Recommended');
+    });
+
     // See https://github.com/mozilla/addons-frontend/issues/8285.
-    it('does not pass an alt property to IconPromotedBadge', () => {
+    it('does not pass an alt property to BadgeIcon', () => {
       renderWithPromotedCategory();
 
-      expect(
-        // eslint-disable-next-line testing-library/prefer-presence-queries
-        within(screen.getByClassName('PromotedBadge')).queryByClassName(
-          'visually-hidden',
-        ),
-      ).not.toBeInTheDocument();
+      const badge = screen.getByTestId(`badge-${RECOMMENDED}`);
+      const icon = within(badge).getByClassName('Badge-icon');
+      expect(icon).not.toHaveAttribute('alt');
     });
   });
 
@@ -2986,9 +2859,15 @@ describe(__filename, () => {
       expect(screen.queryByClassName('AddonBadges')).not.toBeInTheDocument();
     });
 
-    it('displays no badges when none are called for', () => {
+    it('displays no extra badges when none are called for', () => {
       addon = {
         ...addon,
+        average_daily_users: 0,
+        is_experimental: false,
+        requires_payment: false,
+        isAndroidCompatible: false,
+        promoted: null,
+        ratings: null,
         current_version: {
           ...addon.current_version,
           compatibility: {
@@ -2998,36 +2877,36 @@ describe(__filename, () => {
       };
       renderWithAddon();
 
-      expect(
-        // eslint-disable-next-line testing-library/prefer-presence-queries
-        within(screen.getByClassName('AddonBadges')).queryByTagName('div'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryAllByTestId(/badge-/)).toHaveLength(1);
+
+      const badge = screen.getByTestId(`badge-user-fill`);
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent('No Users');
     });
 
     it('displays a badge when the addon is experimental', () => {
       addon.is_experimental = true;
       renderWithAddon();
 
-      expect(screen.getByClassName('Badge-experimental')).toHaveTextContent(
-        'Experimental',
-      );
+      const badge = screen.getByTestId(`badge-experimental-badge`);
+      expect(badge).toBeInTheDocument();
+      expect(badge).toHaveTextContent('Experimental');
     });
 
     it('displays a badge when the addon requires payment', () => {
       addon.requires_payment = true;
       renderWithAddon();
 
-      expect(screen.getByClassName('Badge-requires-payment')).toHaveTextContent(
-        'Some features may require payment',
-      );
+      const badge = screen.getByTestId(`badge-requires-payment`);
+      expect(badge).toHaveTextContent('Some features may require payment');
     });
 
     it('displays a badge when the add-on is compatible with Android on Desktop', () => {
       renderWithAddon();
 
-      expect(
-        screen.getByClassName('Badge-android-compatible'),
-      ).toBeInTheDocument();
+      const badge = screen.getByTestId(`badge-android`);
+      expect(badge).toBeInTheDocument();
+
       // The footer should also be updated when we show this badge.
       expect(
         screen.getByText(/Android is a trademark of Google LLC/),
@@ -3050,9 +2929,7 @@ describe(__filename, () => {
       };
       renderWithAddon();
 
-      expect(
-        screen.queryByClassName('Badge-android-compatible'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByClassName('Badge-android')).not.toBeInTheDocument();
       expect(
         screen.queryByText(/Android is a trademark of Google LLC/),
       ).not.toBeInTheDocument();
@@ -3064,9 +2941,7 @@ describe(__filename, () => {
       addon = { ...addon, type: ADDON_TYPE_STATIC_THEME };
       renderWithAddon();
 
-      expect(
-        screen.queryByClassName('Badge-android-compatible'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByClassName('Badge-android')).not.toBeInTheDocument();
       expect(
         screen.queryByText(/Android is a trademark of Google LLC/),
       ).not.toBeInTheDocument();
@@ -3076,12 +2951,56 @@ describe(__filename, () => {
       store.dispatch(setClientApp(CLIENT_APP_ANDROID));
       renderWithAddon();
 
-      expect(
-        screen.queryByClassName('Badge-android-compatible'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByClassName('Badge-android')).not.toBeInTheDocument();
       expect(
         screen.queryByText(/Android is a trademark of Google LLC/),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Tests for QR card', () => {
+    it('does not render a card for non-Android extensions', () => {
+      addon = {
+        ...addon,
+        current_version: {
+          ...addon.current_version,
+          compatibility: {
+            firefox: addon.current_version.compatibility.firefox,
+          },
+        },
+      };
+      renderWithAddon();
+      expect(screen.queryByClassName('QRCard')).toBeNull();
+    });
+
+    it('does not render a card for Android themes', () => {
+      addon = { ...addon, type: ADDON_TYPE_STATIC_THEME };
+      renderWithAddon();
+      expect(screen.queryByClassName('QRCard')).toBeNull();
+    });
+
+    it('does not render a card on Android', () => {
+      addon = { ...addon, type: ADDON_TYPE_STATIC_THEME };
+      store.dispatch(setClientApp(CLIENT_APP_ANDROID));
+      renderWithAddon();
+      expect(screen.queryByClassName('QRCard')).toBeNull();
+    });
+
+    it('renders a card for Android extensions', () => {
+      renderWithAddon();
+      expect(screen.getByClassName('QRCard')).not.toBeNull();
+      const qr = screen.queryByClassName('QRCard-qr-code');
+      expect(screen.getByClassName('QRCard-label')).toHaveTextContent(
+        'Scan the QR code to open this extension in Firefox for Android',
+      );
+      const expectedURL = getAddonListingURL({
+        addon: { slug: defaultSlug },
+        clientApp: CLIENT_APP_ANDROID,
+        lang,
+        utmCampaign: QR_CODE_UTM_CAMPAIGN,
+        utmContent: defaultSlug,
+      });
+      expect(qr.getAttribute('href')).toEqual(expectedURL);
     });
   });
 

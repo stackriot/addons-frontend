@@ -1,4 +1,5 @@
 /* @flow */
+/* global window */
 import makeClassName from 'classnames';
 import invariant from 'invariant';
 import * as React from 'react';
@@ -6,7 +7,6 @@ import { connect } from 'react-redux';
 import { compose } from 'redux';
 import { encode } from 'universal-base64url';
 
-import Button from 'amo/components/Button';
 import {
   ADDON_TYPE_STATIC_THEME,
   CLIENT_APP_ANDROID,
@@ -16,10 +16,12 @@ import {
   DOWNLOAD_FIREFOX_UTM_CAMPAIGN,
   GET_FIREFOX_BANNER_UTM_CONTENT,
 } from 'amo/constants';
+import Button from 'amo/components/Button';
 import translate from 'amo/i18n/translate';
-import tracking from 'amo/tracking';
+import tracking, { getAddonEventParams } from 'amo/tracking';
 import { makeQueryStringWithUTM } from 'amo/utils';
 import { isFirefox } from 'amo/utils/compatibility';
+import { getPromotedCategory } from 'amo/utils/addons';
 import { makeQueryString } from 'amo/api';
 import type { UserAgentInfoType } from 'amo/reducers/api';
 import type { AppState } from 'amo/store';
@@ -28,8 +30,7 @@ import type { I18nType } from 'amo/types/i18n';
 
 import './styles.scss';
 
-export const GET_FIREFOX_BUTTON_CLICK_ACTION = 'download-firefox-click';
-export const GET_FIREFOX_BUTTON_CLICK_CATEGORY = 'AMO Download Firefox';
+export const GET_FIREFOX_BUTTON_CLICK_CATEGORY = 'amo_download_firefox_button';
 
 export type Props = {|
   addon: AddonType,
@@ -40,6 +41,7 @@ export type Props = {|
 
 export type DefaultProps = {|
   _encode: typeof encode,
+  _getPromotedCategory: typeof getPromotedCategory,
   _tracking: typeof tracking,
 |};
 
@@ -116,6 +118,7 @@ export const getDownloadLink = ({
 
 export const GetFirefoxButtonBase = ({
   _encode = encode,
+  _getPromotedCategory = getPromotedCategory,
   _tracking = tracking,
   addon,
   className,
@@ -133,13 +136,17 @@ export const GetFirefoxButtonBase = ({
 
   const onButtonClick = () => {
     _tracking.sendEvent({
-      action: GET_FIREFOX_BUTTON_CLICK_ACTION,
       category: GET_FIREFOX_BUTTON_CLICK_CATEGORY,
-      label: addon.guid,
+      params: {
+        ...getAddonEventParams(addon, window.location.pathname),
+        trusted: !!_getPromotedCategory({ addon, clientApp }),
+      },
     });
   };
 
-  const supportsRTAMO = clientApp === CLIENT_APP_FIREFOX;
+  const supportsRTAMO =
+    clientApp === CLIENT_APP_FIREFOX ||
+    (clientApp === CLIENT_APP_ANDROID && addon.isAndroidCompatible);
 
   let downloadTextForRTAMO =
     addon.type === ADDON_TYPE_STATIC_THEME
@@ -154,18 +161,6 @@ export const GetFirefoxButtonBase = ({
   const buttonText = supportsRTAMO
     ? downloadTextForRTAMO
     : i18n.gettext('Download Firefox');
-  let calloutText =
-    addon.type === ADDON_TYPE_STATIC_THEME
-      ? i18n.gettext(`You'll need Firefox to use this theme`)
-      : i18n.gettext(`You'll need Firefox to use this extension`);
-  if (forIncompatibleAddon) {
-    calloutText =
-      addon.type === ADDON_TYPE_STATIC_THEME
-        ? i18n.gettext('You need an updated version of Firefox for this theme')
-        : i18n.gettext(
-            'You need an updated version of Firefox for this extension',
-          );
-  }
 
   const buttonContent = (
     <Button
@@ -181,10 +176,6 @@ export const GetFirefoxButtonBase = ({
 
   return (
     <div className={makeClassName('GetFirefoxButton', className)}>
-      <div className="GetFirefoxButton-callout">
-        <div className="GetFirefoxButton-callout-icon" />
-        <div className="GetFirefoxButton-callout-text">{calloutText}</div>
-      </div>
       {buttonContent}
     </div>
   );

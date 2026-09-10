@@ -1,10 +1,10 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .CollectionList {
   @include page-padding;
 
   .Card-contents {
-    background: $white;
+    background: var(--base-color);
     font-size: $font-size-default;
 
     .CollectionList-listing {
@@ -21,7 +21,7 @@
   @include respond-to(large) {
     display: grid;
     grid-auto-flow: column dense;
-    grid-gap: 0 $padding-page-l;
+    gap: 0 $padding-page-l;
     grid-template-columns: minmax(300px, 35%) 1fr;
     margin: 0;
 

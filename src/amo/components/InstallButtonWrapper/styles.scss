@@ -1,48 +1,11 @@
-@import '~amo/css/styles';
-
-.InstallButtonWrapper {
-  display: flex;
-  flex-direction: column;
-
-  @include respond-to(medium) {
-    @include margin-start(auto);
-  }
-
-  .GetFirefoxButton {
-    display: flex;
-    flex-direction: column;
-
-    .GetFirefoxButton-button,
-    .GetFirefoxButton-callout {
-      max-width: 100%;
-      text-align: center;
-      white-space: initial;
-      width: 100%;
-    }
-
-    @include respond-to(medium) {
-      align-self: flex-start;
-      width: fit-content;
-    }
-
-    @include respond-to(large) {
-      width: auto;
-    }
-
-    @include respond-to(extraLarge) {
-      .GetFirefoxButton-button {
-        white-space: nowrap;
-      }
-    }
-  }
-}
+@use '~amo/css/styles' as *;
 
 .InstallButtonWrapper-download {
   margin: 12px 0;
 
   a,
   a:link {
-    color: $sub-text-color;
+    color: var(--sub-text-color);
     font-size: $font-size-s;
     font-weight: 300;
   }

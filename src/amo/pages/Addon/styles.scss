@@ -1,47 +1,21 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 .Addon {
   @include page-padding;
-
-  .Addon-summary-and-install-button-wrapper {
-    .AMInstallButton {
-      @include respond-to(medium) {
-        align-self: flex-end;
-      }
-    }
-
-    .AMInstallButton--noDownloadLink {
-      @include respond-to(medium) {
-        margin-bottom: 12px;
-      }
-    }
-  }
-}
-
-.Addon .Card {
-  margin-bottom: $padding-page;
-
-  @include respond-to(large) {
-    margin-bottom: $padding-page-l;
-  }
-}
-
-.Addon-icon {
-  min-height: 72px;
-
-  @include respond-to(medium) {
-    min-height: 96px;
-  }
 }
 
 .Addon-icon-wrapper {
-  height: 48px;
+  height: 40px;
   overflow: hidden;
-  width: 48px;
+  width: 40px;
 
-  @include respond-to(medium) {
+  @include respond-to(large) {
+    height: 48px;
+    width: 48px;
+  }
+
+  @include respond-to(extraLarge) {
     height: 64px;
-    overflow: hidden;
     width: 64px;
   }
 }
@@ -51,127 +25,156 @@
   width: 100%;
 }
 
-.Addon-header-wrapper {
-  @include respond-to(large) {
-    display: flex;
-  }
+.Addon-warnings > * {
+  margin-bottom: 16px;
 }
 
-.Addon-header-info-card {
-  @include respond-to(large) {
-    @include margin-end($padding-page-l);
-
-    width: 65%;
-  }
-
-  .AddonCompatibilityError,
-  .Addon-non-public-notice {
-    margin: 0;
-    margin-bottom: 12px;
-  }
+.Addon-screenshots,
+.PermissionsCard,
+.AddonMoreInfo,
+.Addon-description-and-ratings {
+  border-top: 1px solid $grey-30;
+  margin-top: 32px;
+  padding-top: 16px;
 }
 
-.Addon-header-meta-and-ratings {
+.Addon-content > .Card-contents {
   @include respond-to(large) {
-    min-width: 300px;
-    width: 35%;
+    padding: 32px 24px;
   }
-}
-
-.Addon-theme .AddonTitle {
-  margin: $padding-page-l 0;
 }
 
 .Addon-header {
-  display: grid;
-  grid-template-columns: 1fr;
-}
+  gap: 8px 0;
+  display: flex;
+  flex-direction: column;
 
-.Addon-summary-and-install-button-wrapper {
-  grid-column: 1 / span 2;
-  width: 100%;
+  & .Addon-theme-thumbnail {
+    background-color: var(--background-grey);
+    border-radius: $border-radius-default;
+    grid-area: theme;
+    margin-top: 16px;
+    padding: 24px;
 
-  .Button {
-    text-align: center;
-    white-space: normal;
+    .ThemeImage {
+      box-shadow: 0 4px 4px 0 rgb(0, 0, 0, 12%);
+      margin: 0 auto;
+    }
 
-    @include respond-to(medium) {
-      white-space: nowrap;
+    @include respond-to(extraLarge) {
+      padding: 48px 24px;
+    }
+  }
+
+  & .Addon-icon-wrapper {
+    grid-area: icon;
+    @include margin-end(16px);
+  }
+
+  & .Addon-info {
+    grid-area: info;
+  }
+
+  & .AddonBadges {
+    grid-area: badge;
+  }
+
+  & .Addon-install {
+    grid-area: install;
+    margin-top: 16px;
+  }
+
+  @include respond-to(large) {
+    gap: 16px;
+    display: grid;
+    grid-template:
+      'icon  info' auto
+      '.     badge' auto
+      '.     install' auto
+      / 48px auto;
+
+    .Addon-theme & {
+      grid-template:
+        'info' auto
+        'badge' auto
+        'install' auto
+        'theme' auto;
+    }
+
+    & .Addon-install {
+      justify-self: end;
+      width: min-content;
+
+      .InstallButtonWrapper {
+        width: 450px;
+      }
     }
   }
 
   @include respond-to(extraLarge) {
-    display: flex;
-    justify-content: space-between;
+    grid-template:
+      'icon info  install' auto
+      '.    badge install' auto
+      '.    .     install' auto
+      / 64px auto auto;
+
+    .Addon-theme & {
+      grid-template:
+        'info install' auto
+        'badge .' auto
+        'theme theme' auto;
+    }
+
+    & .Addon-install {
+      margin-top: 0;
+    }
   }
 }
 
 .Addon-summary {
   font-size: $font-size-default;
   overflow-x: auto;
-
-  @include respond-to(medium) {
-    @include margin-end(24px);
-
-    max-width: 550px;
-  }
-}
-
-.Addon .AMInstallButton {
-  @include respond-to(medium) {
-    @include margin-start(auto);
-
-    align-content: center;
-    align-self: center;
-  }
+  margin: 0;
+  margin-top: 14px;
 }
 
 .Addon .AMInstallButton-button {
   width: 100%;
-
-  @include respond-to(medium) {
-    width: auto;
-  }
 }
 
-.Addon .AMInstallButton-loading-button {
-  @include respond-to(medium) {
-    width: 48px;
+.Addon-description-and-ratings {
+  display: flex;
+  flex-direction: column;
+
+  .AddonDescription {
+    border-bottom: 1px solid $grey-30;
+    margin: 0 0 16px;
+    padding-bottom: 32px;
+
+    .Card-contents {
+      max-width: 760px;
+    }
+  }
+
+  .Addon-overall-rating {
+    @include respond-to(medium) {
+      width: 450px;
+    }
+  }
+
+  @include respond-to(extraExtraLarge) {
+    .AddonDescription {
+      border: 0;
+      flex: 1;
+      margin: 0;
+      padding-bottom: 0;
+      @include padding-end(64px);
+    }
   }
 }
 
 // Details section with lots of grid stuff, on larger displays.
 @include respond-to(large) {
-  .Addon-details {
-    display: grid;
-    grid-auto-flow: column dense;
-    grid-gap: 0 $padding-page-l;
-    grid-template-columns: minmax(300px, 35%) auto;
-    margin: 0;
-
-    .Addon-main-content {
-      grid-column: 2;
-
-      // This span makes sure the left widget does not move vertically when
-      // there is a long description.
-
-      grid-row: 1 / span 100000;
-
-      // Fixes screenshot overflow in FF 52 ESR.
-      max-width: 100%;
-      overflow-x: hidden;
-
-      .Card:first-child {
-        margin-top: 0;
-      }
-    }
-
-    .AddonDescription-contents,
-    .Addon-developer-comments-contents {
-      max-width: 550px;
-    }
-  }
-
   .Addon-screenshots {
     // overflow required to fix content overlap in Safari.
     // See https://github.com/mozilla/addons-frontend/issues/2847
@@ -186,14 +189,49 @@
   // .Addon-overall-rating .Card-footer-link {
   //   display: none;
   // }
+
+  .AddonMoreInfo dl {
+    column-count: 2;
+  }
+}
+
+@include respond-to(extraExtraLarge) {
+  .AddonMoreInfo dl {
+    column-count: 3;
+  }
+
+  .Addon-description-and-ratings {
+    flex-direction: row;
+  }
 }
 
 .Addon-WrongPlatformWarning {
-  margin: 12px 0 0;
   padding-left: 0;
   padding-right: 0;
+}
 
-  @include respond-to(medium) {
-    margin-top: 0;
+.Addon-developer-comments-header {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.AddonDescription-contents + .Addon-developer-comments {
+  .Addon-developer-comments-header {
+    margin-top: 24px;
   }
+}
+
+.ContributeCard {
+  margin: 32px auto 0;
+
+  &.ContributeCard-extension {
+    margin-bottom: 32px;
+  }
+}
+
+.AddonRecommendations {
+  // This is the last card in the page, and it doesn't need a `margin-bottom`,
+  // which `.CardList` adds by default.
+  margin-bottom: 0;
 }

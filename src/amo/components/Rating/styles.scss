@@ -1,35 +1,33 @@
-@import '~amo/css/styles';
+@use '~amo/css/styles' as *;
 
 $icon-large: 64px;
 $icon-medium: 19px;
 $icon-small: 13px;
 
 .Rating {
-  align-content: center;
+  place-content: center center;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: 1fr;
-  justify-content: center;
 
   // The width of small rating stars are controlled by .Rating-star.
   &.Rating--small {
-    grid-column-gap: 4px;
+    column-gap: 4px;
     min-height: $icon-small;
     width: min-content;
   }
 
   // The width of large rating stars are controlled by the container.
   &.Rating--large {
-    grid-column-gap: 6px;
-    max-width: 300px;
-    min-height: 64px;
+    column-gap: 6px;
+    max-width: 250px;
+    min-height: 32px;
     width: 100%;
   }
 
   @include respond-to(extraExtraLarge) {
     &.Rating--large {
-      grid-column-gap: 12px;
-      max-width: none;
+      column-gap: 12px;
     }
   }
 }
@@ -105,6 +103,35 @@ $icon-small: 13px;
 
   [dir='rtl'] & {
     transform: scaleX(-1);
+  }
+}
+
+.Rating:not(.Rating--yellowStars) {
+  .Rating-star {
+    @include dark-theme {
+      background-image: url('./img/closed-star-gray.svg');
+    }
+  }
+
+  .Rating-selected-star {
+    @include dark-theme {
+      background-image: none;
+      mask: url('./img/closed-star-gray.svg') center/contain no-repeat;
+      background-color: var(--primary-font-color);
+    }
+  }
+
+  .Rating-half-star {
+    @include dark-theme {
+      background-image: url('./img/half-star-gray.svg');
+      transform: scaleX(-1);
+    }
+
+    [dir='rtl'] & {
+      @include dark-theme {
+        transform: scaleX(1);
+      }
+    }
   }
 }
 

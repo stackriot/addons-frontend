@@ -1,0 +1,449 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    # Keep the git-tag-push release behaviour we had on CircleCI for blog-utils
+    #   - blog-utils-* tags publish the blog-utils npm package
+    tags:
+      - 'blog-utils-*'
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  context:
+    runs-on: ubuntu-latest
+
+    outputs:
+      is_fork: ${{ steps.context.outputs.is_fork }}
+      is_default_branch: ${{ steps.context.outputs.is_default_branch }}
+      is_release_master: ${{ steps.context.outputs.is_release_master }}
+      is_release_tag: ${{ steps.context.outputs.is_release_tag }}
+
+    steps:
+      - name: Context
+        id: context
+        uses: mozilla/addons/.github/actions/context@f748fdc2c8057ad7b574521a60c182939f2ee687
+
+  build:
+    needs: context
+    # Matches CircleCI: build runs on branches/PRs, not on tag pushes.
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Build (and check bundle sizes)
+        run: npm run build-ci
+
+  test:
+    needs: context
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Run tests
+        run: npm run test-ci
+
+      - name: Upload coverage to Codecov
+        # Secrets are not available to forked PRs, so only upload from the base repo.
+        if: ${{ needs.context.outputs.is_fork == 'false' }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run prettier-ci
+
+      - name: Check fonts
+        run: |
+          pip install 'fonttools<4.44.1' brotli
+          npm run check-fonts
+
+  dennis_lint:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install Dennis
+        run: pip install dennis==1.1.0
+
+      - name: Lint locales
+        run: |
+          dennis-cmd lint locale/*/LC_MESSAGES/*.po --rules W202
+          dennis-cmd lint --errorsonly locale/*/LC_MESSAGES/*.po
+          dennis-cmd lint --errorsonly locale/templates/LC_MESSAGES/*.pot
+
+  build_docker:
+    needs: context
+    # Build the production image to verify every PR. On a release (master push or
+    # release publish) also load + smoke-test it, so it gates the push jobs.
+    # blog-utils-* tags never build an image.
+    if: ${{ !startsWith(github.ref, 'refs/tags/blog-utils-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    outputs:
+      version: ${{ steps.target.outputs.version }}
+      is_release: ${{ steps.target.outputs.is_release }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - name: Determine image version
+        id: target
+        env:
+          is_fork: ${{ needs.context.outputs.is_fork }}
+          is_release_master: ${{ needs.context.outputs.is_release_master }}
+          is_release_tag: ${{ needs.context.outputs.is_release_tag }}
+          ref_name: ${{ github.ref_name }}
+        run: |
+          # Default: PR / branch build -> verify only, no release.
+          version="ci"
+          is_release="false"
+
+          if [[ "$is_fork" == 'false' ]]; then
+            if [[ "$is_release_master" == 'true' ]]; then
+              # Push to master -> tag the image as latest.
+              version="latest"
+              is_release="true"
+            elif [[ "$is_release_tag" == 'true' ]]; then
+              # A version tag push -> tag the image with the git tag.
+              version="$ref_name"
+              is_release="true"
+            fi
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "is_release=$is_release" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Build image
+        id: build
+        uses: ./.github/actions/build-docker
+        with:
+          registry: docker.io
+          image: ${{ github.repository }}
+          version: ${{ steps.target.outputs.version }}
+          push: false
+          # Only load into the local daemon when we are going to smoke test it.
+          load: ${{ steps.target.outputs.is_release }}
+          # A release ships a single generic image with every env's assets; a
+          # PR/verify build only needs one env, so prebuild just prod to keep
+          # the build fast.
+          prebuild_envs: ${{ steps.target.outputs.is_release == 'true' && 'dev,stage,prod' || 'prod' }}
+
+      # Boot the built image and confirm it serves the load balancer heartbeat,
+      # mirroring the "Check image works" step from the old CircleCI release jobs.
+      - name: Smoke test image
+        if: ${{ steps.target.outputs.is_release == 'true' }}
+        env:
+          image_ref: ${{ steps.build.outputs.tags }}
+        run: |
+          set -euo pipefail
+          # Assets are prebuilt into the image, so the default CMD
+          # (npm run start:prebuilt) selects the NODE_CONFIG_ENV=prod set and
+          # starts without a build.
+          cid=$(docker run --rm -d -p 4000:4000 \
+            -e NODE_ENV=production -e NODE_CONFIG_ENV=prod \
+            "$image_ref")
+
+          cleanup() { docker stop "$cid" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          # The server require()s src/locale/<locale>/amo.js at SSR time to
+          # translate pages; check they exist.
+          if ! docker exec "$cid" sh -c 'test -f src/locale/it/amo.js && test -f src/locale/de/amo.js'; then
+            echo "SSR locale catalogs missing from image (mozilla/addons#16410)"
+            docker logs "$cid" || true
+            exit 1
+          fi
+          echo "locale catalogs present"
+
+          for _ in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:4000/__frontend_lbheartbeat__; then
+              echo "heartbeat OK"
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "heartbeat did not respond in time"
+          docker logs "$cid" || true
+          exit 1
+
+  push_dockerhub:
+    needs: [context, build_docker]
+    # Push the release image (:latest on master, :<tag> on a version tag) to
+    # Docker Hub. Skipped on PRs and forks (is_release is only true off a fork).
+    if: ${{ needs.build_docker.outputs.is_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - name: Login to Dockerhub
+        id: docker_hub
+        uses: mozilla/addons/.github/actions/login-docker@f748fdc2c8057ad7b574521a60c182939f2ee687
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASS }}
+
+      - name: Build and push image
+        uses: ./.github/actions/build-docker
+        with:
+          registry: ${{ steps.docker_hub.outputs.registry }}
+          image: ${{ steps.docker_hub.outputs.image }}
+          version: ${{ needs.build_docker.outputs.version }}
+          push: true
+
+  push_gar:
+    needs: [context, build_docker]
+    # Push the release image to Google Artifact Registry, replacing the old
+    # CircleCI -> event-relay -> deploy-amo relay. Requires id-token for the
+    # workload-identity auth performed by the login-gar action.
+    if: ${{ needs.build_docker.outputs.is_release == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      registry: us-docker.pkg.dev
+      image: moz-fx-amo-prod/amo-prod/addons-frontend
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - name: Login to GAR
+        uses: mozilla/addons/.github/actions/login-gar@f748fdc2c8057ad7b574521a60c182939f2ee687
+        with:
+          registry: ${{ env.registry }}
+          service_account: ${{ secrets.GAR_PUSHER_SERVICE_ACCOUNT_EMAIL }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Build and push image
+        uses: ./.github/actions/build-docker
+        with:
+          registry: ${{ env.registry }}
+          image: ${{ env.image }}
+          version: ${{ needs.build_docker.outputs.version }}
+          push: true
+
+  blog_utils:
+    needs: context
+    # Publish the blog-utils npm package on blog-utils-* tags only.
+    if: ${{ startsWith(github.ref, 'refs/tags/blog-utils-') && needs.context.outputs.is_fork == 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          persist-credentials: false
+          path: locale
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Build blog-utils package
+        run: npm run build:blog-utils-prod
+
+      - name: Publish package
+        run: cd dist && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  locales:
+    needs: context
+    # Locale extraction is only relevant on branch pushes and PRs, not tags.
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+        contents: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: ${{ needs.context.outputs.is_default_branch }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mozilla-l10n/addons-frontend-l10n
+          token: ${{ secrets.L10N_GITHUB_TOKEN || github.token }}
+          persist-credentials: ${{ needs.context.outputs.is_default_branch }}
+          path: locale
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+            node-version: 22
+            package-manager-cache: false
+
+      - name: Install gettext
+        run: sudo apt-get install gettext
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Extract locales
+        run: npm run extract-locales
+
+      - name: Push Locales
+        env:
+          is_fork: ${{ needs.context.outputs.is_fork }}
+          event_name: ${{ github.event_name }}
+          is_default_branch: ${{ needs.context.outputs.is_default_branch }}
+          is_push: ${{ github.event_name == 'push' }}
+          GH_TOKEN: ${{ secrets.L10N_GITHUB_TOKEN || github.token }}
+        run: |
+
+          # Keep this logic in sync with addons-server
+
+          if [[ "$is_fork" == 'true' ]]; then
+            cat <<'EOF'
+              Github actions are not authorized to push from workflows triggered by forks.
+              We cannot verify if the l10n extraction push will work or not.
+              Please submit a PR from the base repository if you are modifying l10n extraction scripts.
+          EOF
+            exit 0
+          fi
+
+          if [[ "$is_default_branch" == 'true' && "$is_push" == 'true' ]]; then
+            args=""
+          else
+            args="--dry-run"
+          fi
+
+          ./bin/push-locales $args
